@@ -929,6 +929,7 @@ function PracticeView({ words, categories, save }) {
 /* ── stats ────────────────────────────────────────────────────── */
 function StatsView({ words, categories, save }) {
   const [confirm, setConfirm] = useState(false);
+  const [statsFilter, setStatsFilter] = useState(-1); // -1 = all, 0-3 = level
 
   const counts = [0, 0, 0, 0];
   words.forEach((w) => counts[getLevel(w)]++);
@@ -1006,37 +1007,55 @@ function StatsView({ words, categories, save }) {
 
       <div className="card" style={{ padding: 20, marginBottom: 16 }}>
         <h2 style={{ fontSize: 20, marginBottom: 14, position: "relative" }}>Word Details</h2>
+        <div className="cat-chips" style={{ marginBottom: 12, position: "relative" }}>
+          <button className={`cat-chip ${statsFilter === -1 ? "active" : ""}`} onClick={() => setStatsFilter(-1)}>
+            All ({total})
+          </button>
+          {LEVELS.map((lv, i) => counts[i] > 0 && (
+            <button
+              key={i}
+              className={`cat-chip ${statsFilter === i ? "active" : ""}`}
+              onClick={() => setStatsFilter(i)}
+              style={statsFilter === i ? { borderColor: lv.color, color: lv.color, background: lv.bg } : {}}
+            >
+              {lv.label} ({counts[i]})
+            </button>
+          ))}
+        </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 300, overflowY: "auto", position: "relative" }}>
-          {words.map((w, i) => {
-            const lv = getLevel(w);
-            return (
-              <div key={i} className="word-row" style={{ fontSize: 13 }}>
-                <div style={{ flex: 1 }}>
-                  <span style={{ fontWeight: 600 }}>
-                    {w.article && <span style={{ color: "var(--accent2)" }}>{w.article} </span>}
-                    {w.de}
-                  </span>
-                  <span style={{ color: "var(--ink2)", margin: "0 4px" }}>{"\u2192"}</span>
-                  <span>{w.fr}</span>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  {catNames[w.category] && (
-                    <span style={{ fontSize: 10, color: "var(--ink2)", background: "var(--warm)", padding: "1px 6px", borderRadius: 4 }}>
-                      {catNames[w.category]}
+          {[...words]
+            .sort((a, b) => getLevel(a) - getLevel(b))
+            .filter((w) => statsFilter === -1 || getLevel(w) === statsFilter)
+            .map((w, i) => {
+              const lv = getLevel(w);
+              return (
+                <div key={i} className="word-row" style={{ fontSize: 13 }}>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontWeight: 600 }}>
+                      {w.article && <span style={{ color: "var(--accent2)" }}>{w.article} </span>}
+                      {w.de}
                     </span>
-                  )}
-                  <span
-                    style={{
-                      fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
-                      background: LEVELS[lv].bg, color: LEVELS[lv].color,
-                    }}
-                  >
-                    {LEVELS[lv].label}
-                  </span>
+                    <span style={{ color: "var(--ink2)", margin: "0 4px" }}>{"\u2192"}</span>
+                    <span>{w.fr}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    {catNames[w.category] && (
+                      <span style={{ fontSize: 10, color: "var(--ink2)", background: "var(--warm)", padding: "1px 6px", borderRadius: 4 }}>
+                        {catNames[w.category]}
+                      </span>
+                    )}
+                    <span
+                      style={{
+                        fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
+                        background: LEVELS[lv].bg, color: LEVELS[lv].color,
+                      }}
+                    >
+                      {LEVELS[lv].label}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
         </div>
       </div>
 
