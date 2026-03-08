@@ -656,7 +656,8 @@ function PracticeView({ words, categories, save }) {
   const handleTypeSubmit = () => {
     if (!input.trim() || result) return;
     const expected = direction === "de>fr" ? current.fr : current.de;
-    const isCorrect = input.trim().toLowerCase() === expected.toLowerCase();
+    const alternatives = expected.split("/").map((s) => s.trim().toLowerCase());
+    const isCorrect = alternatives.includes(input.trim().toLowerCase());
     setResult(isCorrect ? "correct" : "wrong");
     setCorrectAnswer(expected);
     setSessionCount((c) => c + 1);
