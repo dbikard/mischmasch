@@ -570,6 +570,7 @@ function PracticeView({ words, categories, save }) {
   const [input, setInput] = useState("");
   const [result, setResult] = useState(null);
   const [correctAnswer, setCorrectAnswer] = useState("");
+  const [partialReason, setPartialReason] = useState("");
   const [choiceStates, setChoiceStates] = useState({});
   const [streak, setStreak] = useState(0);
   const [sessionCount, setSessionCount] = useState(0);
@@ -624,6 +625,7 @@ function PracticeView({ words, categories, save }) {
     setInput("");
     setChoiceStates({});
     setCorrectAnswer("");
+    setPartialReason("");
 
     if (mode === "gender") {
       const pool = filteredWords.filter((w) => w.article);
@@ -670,28 +672,46 @@ function PracticeView({ words, categories, save }) {
       });
     }
     const userInput = input.trim().toLowerCase();
+    const wordAlts = rawExpected.split("/").map((s) => s.trim().toLowerCase());
     const isCorrect = alternatives.some((alt) => userInput === alt || normalizeText(userInput) === normalizeText(alt));
 
-    // Check for wrong article but correct word (fr>de only)
-    let isPartial = false;
-    if (!isCorrect && direction === "fr>de" && current.article) {
-      const articleMatch = userInput.match(/^(der|die|das)\s+(.+)$/i);
-      if (articleMatch) {
-        const typedWord = articleMatch[2].toLowerCase();
-        const wordAlts = rawExpected.split("/").map((s) => s.trim().toLowerCase());
-        isPartial = wordAlts.some((alt) => typedWord === alt || normalizeText(typedWord) === normalizeText(alt));
+    // Check partial matches for fr>de when word has an article
+    let partialType = null; // "no-article" or "wrong-article"
+    if (direction === "fr>de" && current.article) {
+      if (isCorrect) {
+        // Check if they typed just the word without article
+        const hasArticle = userInput.match(/^(der|die|das)\s+/i);
+        if (!hasArticle) {
+          partialType = "no-article";
+        }
+      } else {
+        // Check if they typed wrong article but correct word
+        const articleMatch = userInput.match(/^(der|die|das)\s+(.+)$/i);
+        if (articleMatch) {
+          const typedWord = articleMatch[2].toLowerCase();
+          const isWordCorrect = wordAlts.some((alt) => typedWord === alt || normalizeText(typedWord) === normalizeText(alt));
+          if (isWordCorrect) partialType = "wrong-article";
+        }
       }
     }
 
-    if (isCorrect) {
+    if (isCorrect && !partialType) {
       setResult("correct");
       setCorrectAnswer(displayExpected);
       setSessionCount((c) => c + 1);
       updateWord(current, "correct", 2);
       setStreak((s) => s + 1);
       setTimeout(nextCard, 900);
-    } else if (isPartial) {
+    } else if (partialType === "no-article") {
       setResult("partial");
+      setPartialReason("Don't forget the article!");
+      setCorrectAnswer(displayExpected);
+      setSessionCount((c) => c + 1);
+      updateWord(current, "correct", 0.5);
+      setTimeout(nextCard, 1500);
+    } else if (partialType === "wrong-article") {
+      setResult("partial");
+      setPartialReason("Correct word, but wrong article!");
       setCorrectAnswer(displayExpected);
       setSessionCount((c) => c + 1);
       updateWord(current, "correct", 0.5);
@@ -844,7 +864,7 @@ function PracticeView({ words, categories, save }) {
               {result === "partial" && (
                 <div className="fade-in" style={{ marginTop: 12, padding: 14, borderRadius: 12, background: "#fef5e7", textAlign: "center" }}>
                   <div style={{ fontSize: 13, color: "var(--accent)", fontWeight: 600, marginBottom: 4 }}>
-                    Correct word, but wrong article!
+                    {partialReason}
                   </div>
                   <div style={{ fontFamily: "'Lora', serif", fontSize: 24, color: "var(--ink)" }}>
                     {correctAnswer}
