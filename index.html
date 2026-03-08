@@ -19,9 +19,11 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <script type="text/babel">
-const { useState, useEffect, useCallback, useRef } = React;
+const { useState, useEffect, useCallback, useRef, useMemo } = React;
 
 const STORAGE_KEY = "vocab-de-fr";
+const CATEGORIES_KEY = "vocab-de-fr-categories";
+const FILTER_KEY = "vocab-de-fr-filter";
 
 /* ── helpers ─────────────────────────────────────────────────── */
 function shuffle(a) {
@@ -33,7 +35,7 @@ function shuffle(a) {
   return b;
 }
 
-function parseTable(text) {
+function parseTable(text, category) {
   return text
     .trim()
     .split("\n")
@@ -50,7 +52,7 @@ function parseTable(text) {
         article = m[1].toLowerCase();
         de = de.slice(m[0].length);
       }
-      return { de, fr, article, correct: 0, wrong: 0, genderCorrect: 0, genderWrong: 0 };
+      return { de, fr, article, correct: 0, wrong: 0, genderCorrect: 0, genderWrong: 0, category: category || "my-words" };
     })
     .filter(Boolean);
 }
@@ -92,6 +94,10 @@ function weightedPick(words, levelFn) {
 function pickChoices(correct, all, field, count = 4) {
   const others = shuffle(all.filter((w) => w[field] !== correct[field]));
   return shuffle([correct, ...others.slice(0, count - 1)]);
+}
+
+function wordKey(w) {
+  return (w.de + "|" + w.fr).toLowerCase();
 }
 
 /* ── styles ──────────────────────────────────────────────────── */
@@ -240,6 +246,16 @@ input[type="text"]:focus { border-color: var(--accent); }
 }
 .mode-tab.active { background: var(--card); color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
 
+.cat-chips {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.cat-chip {
+  padding: 5px 12px; border-radius: 20px; border: 2px solid var(--warm);
+  background: var(--card); font-family: 'DM Sans', sans-serif; font-size: 12px;
+  font-weight: 600; color: var(--ink2); cursor: pointer; transition: all 0.15s;
+}
+.cat-chip.active { border-color: var(--accent); background: #fef5f2; color: var(--accent); }
+
 h1 { font-family: 'Lora', serif; font-size: 32px; font-weight: 700; }
 h2 { font-family: 'Lora', serif; font-size: 26px; font-weight: 700; }
 
@@ -256,15 +272,70 @@ h2 { font-family: 'Lora', serif; font-size: 26px; font-weight: 700; }
 /* ── main component ──────────────────────────────────────────── */
 function VocabTrainer() {
   const [words, setWords] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [view, setView] = useState("home");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      setWords(JSON.parse(stored));
-    }
-    setLoading(false);
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    const storedCats = JSON.parse(localStorage.getItem(CATEGORIES_KEY) || "null");
+
+    fetch('./words/index.json')
+      .then((r) => r.json())
+      .then((index) => {
+        const cats = [...index, { id: "my-words", name: "My words" }];
+        setCategories(cats);
+        localStorage.setItem(CATEGORIES_KEY, JSON.stringify(cats));
+
+        return Promise.all(
+          index.map((cat) =>
+            fetch('./words/' + cat.file)
+              .then((r) => r.text())
+              .then((text) => parseTable(text, cat.id))
+          )
+        );
+      })
+      .then((results) => {
+        const fetched = results.flat();
+        const existingMap = {};
+        if (stored) {
+          stored.forEach((w) => { existingMap[wordKey(w)] = w; });
+        }
+        // Merge: keep existing scores, add new words from files
+        const merged = [];
+        const seen = new Set();
+        // First, add all fetched words (with existing scores if available)
+        for (const w of fetched) {
+          const k = wordKey(w);
+          if (seen.has(k)) continue;
+          seen.add(k);
+          if (existingMap[k]) {
+            merged.push({ ...existingMap[k], category: w.category });
+          } else {
+            merged.push(w);
+          }
+        }
+        // Then, add any user-added words from localStorage not in fetched files
+        if (stored) {
+          for (const w of stored) {
+            const k = wordKey(w);
+            if (!seen.has(k)) {
+              seen.add(k);
+              merged.push({ ...w, category: w.category || "my-words" });
+            }
+          }
+        }
+        setWords(merged);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+        setLoading(false);
+      })
+      .catch(() => {
+        // Offline or fetch failed — use stored data
+        if (stored) setWords(stored);
+        if (storedCats) setCategories(storedCats);
+        else setCategories([{ id: "my-words", name: "My words" }]);
+        setLoading(false);
+      });
   }, []);
 
   const save = useCallback((next) => {
@@ -283,10 +354,10 @@ function VocabTrainer() {
     <>
       <style>{CSS}</style>
       <div className="app">
-        {view === "home" && <HomeView words={words} setView={setView} />}
+        {view === "home" && <HomeView words={words} categories={categories} setView={setView} />}
         {view === "add" && <AddView words={words} save={save} />}
-        {view === "practice" && <PracticeView words={words} save={save} />}
-        {view === "stats" && <StatsView words={words} save={save} />}
+        {view === "practice" && <PracticeView words={words} categories={categories} save={save} />}
+        {view === "stats" && <StatsView words={words} categories={categories} save={save} />}
       </div>
       <Nav view={view} setView={setView} />
     </>
@@ -314,8 +385,11 @@ function Nav({ view, setView }) {
 }
 
 /* ── home ────────────────────────────────────────────────────── */
-function HomeView({ words, setView }) {
+function HomeView({ words, categories, setView }) {
   const withArticle = words.filter((w) => w.article);
+  const catCounts = {};
+  words.forEach((w) => { catCounts[w.category] = (catCounts[w.category] || 0) + 1; });
+
   return (
     <div className="fade-in" style={{ paddingTop: 40 }}>
       <div style={{ textAlign: "center", marginBottom: 32 }}>
@@ -328,6 +402,11 @@ function HomeView({ words, setView }) {
         <div style={{ fontFamily: "'Lora', serif", fontSize: 24, fontWeight: 700, position: "relative" }}>
           {words.length} {words.length === 1 ? "word" : "words"}
         </div>
+        {categories.filter((c) => catCounts[c.id]).length > 1 && (
+          <div style={{ fontSize: 13, color: "var(--ink2)", marginTop: 6, position: "relative" }}>
+            {categories.filter((c) => catCounts[c.id]).map((c) => `${c.name} (${catCounts[c.id]})`).join(" \u00b7 ")}
+          </div>
+        )}
         {withArticle.length > 0 && (
           <div style={{ fontSize: 13, color: "var(--ink2)", marginTop: 4, position: "relative" }}>
             {withArticle.length} with article
@@ -361,7 +440,7 @@ function AddView({ words, save }) {
   const [deleteId, setDeleteId] = useState(null);
 
   const handleParse = () => {
-    const parsed = parseTable(text);
+    const parsed = parseTable(text, "my-words");
     setPreview(parsed.length > 0 ? parsed : []);
   };
 
@@ -482,7 +561,7 @@ function AddView({ words, save }) {
 }
 
 /* ── practice ────────────────────────────────────────────────── */
-function PracticeView({ words, save }) {
+function PracticeView({ words, categories, save }) {
   const [mode, setMode] = useState("type");
   const [current, setCurrent] = useState(null);
   const [direction, setDirection] = useState("de>fr");
@@ -495,8 +574,49 @@ function PracticeView({ words, save }) {
   const [sessionCount, setSessionCount] = useState(0);
   const inputRef = useRef(null);
 
-  const wordsWithArticle = words.filter((w) => w.article);
-  const hasEnough = mode === "gender" ? wordsWithArticle.length >= 1 : (mode === "choice" ? words.length >= 4 : words.length >= 1);
+  // Category filter — default: all active
+  const [activeCategories, setActiveCategories] = useState(() => {
+    const stored = JSON.parse(localStorage.getItem(FILTER_KEY) || "null");
+    return stored ? new Set(stored) : null; // null = all
+  });
+
+  const availableCategories = useMemo(() => {
+    const catIds = new Set(words.map((w) => w.category));
+    return categories.filter((c) => catIds.has(c.id));
+  }, [words, categories]);
+
+  const allActive = activeCategories === null || activeCategories.size === availableCategories.length;
+
+  const filteredWords = useMemo(() => {
+    if (allActive) return words;
+    return words.filter((w) => activeCategories.has(w.category));
+  }, [words, activeCategories, allActive]);
+
+  const toggleCategory = (catId) => {
+    let next;
+    if (allActive) {
+      // Switching from "all" to just this one
+      next = new Set([catId]);
+    } else if (activeCategories.has(catId)) {
+      next = new Set(activeCategories);
+      next.delete(catId);
+      if (next.size === 0) next = null; // back to all
+    } else {
+      next = new Set(activeCategories);
+      next.add(catId);
+      if (next.size === availableCategories.length) next = null; // all selected = all
+    }
+    setActiveCategories(next);
+    localStorage.setItem(FILTER_KEY, JSON.stringify(next ? [...next] : null));
+  };
+
+  const setAll = () => {
+    setActiveCategories(null);
+    localStorage.setItem(FILTER_KEY, "null");
+  };
+
+  const wordsWithArticle = filteredWords.filter((w) => w.article);
+  const hasEnough = mode === "gender" ? wordsWithArticle.length >= 1 : (mode === "choice" ? filteredWords.length >= 4 : filteredWords.length >= 1);
 
   const nextCard = useCallback(() => {
     setResult(null);
@@ -505,26 +625,26 @@ function PracticeView({ words, save }) {
     setCorrectAnswer("");
 
     if (mode === "gender") {
-      const pool = words.filter((w) => w.article);
+      const pool = filteredWords.filter((w) => w.article);
       if (pool.length === 0) return;
       const w = weightedPick(pool, getGenderLevel);
       setCurrent(w);
     } else {
       const dir = Math.random() < 0.5 ? "de>fr" : "fr>de";
       setDirection(dir);
-      const w = weightedPick(words, getLevel);
+      const w = weightedPick(filteredWords, getLevel);
       setCurrent(w);
       if (mode === "choice") {
         const field = dir === "de>fr" ? "fr" : "de";
-        setChoices(pickChoices(w, words, field));
+        setChoices(pickChoices(w, filteredWords, field));
       }
     }
     setTimeout(() => inputRef.current?.focus(), 100);
-  }, [words, mode]);
+  }, [filteredWords, mode]);
 
   useEffect(() => {
     if (hasEnough) nextCard();
-  }, [mode]);
+  }, [mode, activeCategories]);
 
   const updateWord = useCallback((word, field, delta) => {
     const next = words.map((w) =>
@@ -622,6 +742,21 @@ function PracticeView({ words, save }) {
         )}
       </div>
 
+      {availableCategories.length > 1 && (
+        <div className="cat-chips" style={{ marginBottom: 12 }}>
+          <button className={`cat-chip ${allActive ? "active" : ""}`} onClick={setAll}>All</button>
+          {availableCategories.map((c) => (
+            <button
+              key={c.id}
+              className={`cat-chip ${!allActive && activeCategories.has(c.id) ? "active" : ""}`}
+              onClick={() => toggleCategory(c.id)}
+            >
+              {c.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="mode-tabs" style={{ marginBottom: 20 }}>
         <button className={`mode-tab ${mode === "type" ? "active" : ""}`} onClick={() => setMode("type")}>Type</button>
         <button className={`mode-tab ${mode === "choice" ? "active" : ""}`} onClick={() => setMode("choice")}>Choice</button>
@@ -633,7 +768,9 @@ function PracticeView({ words, save }) {
           <p style={{ color: "var(--ink2)", fontSize: 14, position: "relative" }}>
             {mode === "choice"
               ? "You need at least 4 words for multiple choice."
-              : "Add words with articles (e.g. 'der Hund') to practice gender."}
+              : mode === "gender"
+                ? "Add words with articles (e.g. 'der Hund') to practice gender."
+                : "No words in selected categories."}
           </p>
         </div>
       ) : current ? (
@@ -724,7 +861,7 @@ function PracticeView({ words, save }) {
 }
 
 /* ── stats ────────────────────────────────────────────────────── */
-function StatsView({ words, save }) {
+function StatsView({ words, categories, save }) {
   const [confirm, setConfirm] = useState(false);
 
   const counts = [0, 0, 0, 0];
@@ -733,6 +870,9 @@ function StatsView({ words, save }) {
   words.filter((w) => w.article).forEach((w) => genderCounts[getGenderLevel(w)]++);
   const total = words.length;
   const withArticle = words.filter((w) => w.article).length;
+
+  const catNames = {};
+  categories.forEach((c) => { catNames[c.id] = c.name; });
 
   const resetAll = () => {
     const next = words.map((w) => ({ ...w, correct: 0, wrong: 0, genderCorrect: 0, genderWrong: 0 }));
@@ -813,14 +953,21 @@ function StatsView({ words, save }) {
                   <span style={{ color: "var(--ink2)", margin: "0 4px" }}>{"\u2192"}</span>
                   <span>{w.fr}</span>
                 </div>
-                <span
-                  style={{
-                    fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
-                    background: LEVELS[lv].bg, color: LEVELS[lv].color,
-                  }}
-                >
-                  {LEVELS[lv].label}
-                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  {catNames[w.category] && (
+                    <span style={{ fontSize: 10, color: "var(--ink2)", background: "var(--warm)", padding: "1px 6px", borderRadius: 4 }}>
+                      {catNames[w.category]}
+                    </span>
+                  )}
+                  <span
+                    style={{
+                      fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
+                      background: LEVELS[lv].bg, color: LEVELS[lv].color,
+                    }}
+                  >
+                    {LEVELS[lv].label}
+                  </span>
+                </div>
               </div>
             );
           })}

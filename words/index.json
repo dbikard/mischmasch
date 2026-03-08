@@ -1,0 +1,4 @@
+[
+  { "id": "accessoires", "name": "Accessoires", "file": "accessoires.tsv" },
+  { "id": "klamotten", "name": "Klamotten", "file": "klamotten.tsv" }
+]

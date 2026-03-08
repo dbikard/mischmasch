@@ -1,10 +1,13 @@
-const CACHE_NAME = 'mischmasch-v1';
+const CACHE_NAME = 'mischmasch-v3';
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
+  './words/index.json',
+  './words/accessoires.tsv',
+  './words/klamotten.tsv',
 ];
 
 self.addEventListener('install', (event) => {
