@@ -674,7 +674,7 @@ function PracticeView({ words, categories, save }) {
     setCorrectAnswer(displayExpected);
     setSessionCount((c) => c + 1);
     if (isCorrect) {
-      updateWord(current, "correct", 1);
+      updateWord(current, "correct", 2);
       setStreak((s) => s + 1);
       setTimeout(nextCard, 900);
     } else {
