@@ -13,5 +13,8 @@ Thumbs.db
 __pycache__/
 *.pyc
 
+# Source/planning files
+source/
+
 # Claude Code
 .claude/
