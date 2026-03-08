@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>MischMasch</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#c45a3c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="MischMasch">
+  <link rel="apple-touch-icon" href="icon-192.png">
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel">
+const { useState, useEffect, useCallback, useRef } = React;
+
+const STORAGE_KEY = "vocab-de-fr";
+
+/* ── helpers ─────────────────────────────────────────────────── */
+function shuffle(a) {
+  const b = [...a];
+  for (let i = b.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [b[i], b[j]] = [b[j], b[i]];
+  }
+  return b;
+}
+
+function parseTable(text) {
+  return text
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const parts = line.split(/\t|\s*\|\s*|;\s*|\s{2,}/);
+      if (parts.length < 2) return null;
+      let de = parts[0].trim();
+      const fr = parts[1].trim();
+      if (!de || !fr || /^[-=:]+$/.test(de) || /^[-=:]+$/.test(fr)) return null;
+      let article = null;
+      const m = de.match(/^(der|die|das)\s+/i);
+      if (m) {
+        article = m[1].toLowerCase();
+        de = de.slice(m[0].length);
+      }
+      return { de, fr, article, correct: 0, wrong: 0, genderCorrect: 0, genderWrong: 0 };
+    })
+    .filter(Boolean);
+}
+
+function getLevel(w) {
+  const net = (w.correct || 0) - (w.wrong || 0);
+  if (net >= 5) return 3;
+  if (net >= 2) return 2;
+  if (net >= 0) return 1;
+  return 0;
+}
+
+function getGenderLevel(w) {
+  const net = (w.genderCorrect || 0) - (w.genderWrong || 0);
+  if (net >= 5) return 3;
+  if (net >= 2) return 2;
+  if (net >= 0) return 1;
+  return 0;
+}
+
+const LEVELS = [
+  { label: "Struggling", color: "#c0392b", bg: "#fdecea" },
+  { label: "New", color: "#7f8c8d", bg: "#f4f4f4" },
+  { label: "Learning", color: "#d4820a", bg: "#fef5e7" },
+  { label: "Mastered", color: "#1e8449", bg: "#e8f8f0" },
+];
+
+function weightedPick(words, levelFn) {
+  const weights = words.map((w) => [8, 5, 2, 1][levelFn(w)]);
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < words.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return words[i];
+  }
+  return words[words.length - 1];
+}
+
+function pickChoices(correct, all, field, count = 4) {
+  const others = shuffle(all.filter((w) => w[field] !== correct[field]));
+  return shuffle([correct, ...others.slice(0, count - 1)]);
+}
+
+/* ── styles ──────────────────────────────────────────────────── */
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,700;1,500&family=DM+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  --cream: #faf6f0;
+  --warm: #f0e8dc;
+  --card: #fffdf8;
+  --ink: #2c2416;
+  --ink2: #5c4f3d;
+  --accent: #c45a3c;
+  --accent2: #3c7a6e;
+  --green: #2d8659;
+  --red: #c0392b;
+  --shadow: 0 4px 20px rgba(44,36,22,0.10), 0 1px 4px rgba(44,36,22,0.08);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body, #root { background: var(--cream); font-family: 'DM Sans', sans-serif; color: var(--ink); }
+
+.app { max-width: 480px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; padding: 0 16px 90px; }
+
+.nav {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
+  background: var(--card); border-top: 1px solid var(--warm);
+  display: flex; justify-content: center; gap: 0;
+  padding: 6px 0 env(safe-area-inset-bottom, 8px);
+  box-shadow: 0 -2px 12px rgba(44,36,22,0.06);
+}
+.nav button {
+  flex: 1; max-width: 120px;
+  background: none; border: none; padding: 8px 4px 4px;
+  font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 600;
+  color: var(--ink2); display: flex; flex-direction: column; align-items: center; gap: 3px;
+  cursor: pointer; transition: color 0.15s;
+}
+.nav button.active { color: var(--accent); }
+.nav-icon { font-size: 20px; line-height: 1; }
+
+.card {
+  background: var(--card); border-radius: 16px; box-shadow: var(--shadow);
+  border: 1px solid rgba(44,36,22,0.06);
+  padding: 32px 24px; text-align: center;
+  position: relative; overflow: hidden;
+}
+.card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 31px, rgba(44,36,22,0.03) 31px, rgba(44,36,22,0.03) 32px);
+  pointer-events: none;
+}
+
+.card-word {
+  font-family: 'Lora', serif; font-size: 36px; font-weight: 700;
+  color: var(--ink); line-height: 1.2; position: relative;
+}
+.card-hint {
+  font-size: 13px; color: var(--ink2); margin-top: 6px;
+  font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase;
+}
+
+.fade-in { animation: fadeIn 0.3s ease-out; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 12px 24px; border-radius: 12px; border: none;
+  font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s; width: 100%;
+}
+.btn-primary { background: var(--accent); color: white; }
+.btn-primary:active { background: #a84830; transform: scale(0.98); }
+.btn-secondary { background: var(--warm); color: var(--ink); }
+.btn-secondary:active { background: #e4d8c8; }
+.btn-outline {
+  background: var(--card); color: var(--ink); border: 2px solid var(--warm);
+}
+.btn-outline:active { background: var(--warm); }
+.btn-small { padding: 8px 16px; font-size: 13px; width: auto; }
+.btn-green { background: var(--green); color: white; }
+.btn-red { background: var(--red); color: white; }
+
+.choice-btn {
+  padding: 14px 20px; border-radius: 12px; border: 2px solid var(--warm);
+  background: var(--card); font-family: 'Lora', serif; font-size: 22px;
+  font-weight: 500; color: var(--ink); cursor: pointer; transition: all 0.15s;
+  text-align: left; width: 100%;
+}
+.choice-btn:active { border-color: var(--accent); background: #fef5f2; }
+.choice-correct { border-color: var(--green) !important; background: #e8f8f0 !important; color: var(--green) !important; }
+.choice-wrong { border-color: var(--red) !important; background: #fdecea !important; color: var(--red) !important; }
+
+.gender-btn {
+  flex: 1; padding: 16px 8px; border-radius: 14px; border: 2px solid var(--warm);
+  background: var(--card); font-family: 'DM Sans', sans-serif; font-size: 18px;
+  font-weight: 700; color: var(--ink); cursor: pointer; transition: all 0.15s;
+}
+.gender-btn:active { border-color: var(--accent); }
+
+textarea {
+  width: 100%; min-height: 120px; padding: 14px; border-radius: 12px;
+  border: 2px solid var(--warm); background: var(--card);
+  font-family: 'DM Sans', sans-serif; font-size: 14px; color: var(--ink);
+  resize: vertical; outline: none;
+}
+textarea:focus { border-color: var(--accent); }
+
+input[type="text"] {
+  width: 100%; padding: 14px; border-radius: 12px;
+  border: 2px solid var(--warm); background: var(--card);
+  font-family: 'Lora', serif; font-size: 22px; color: var(--ink);
+  text-align: center; outline: none;
+}
+input[type="text"]:focus { border-color: var(--accent); }
+
+.streak-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--warm); border-radius: 20px; padding: 4px 12px;
+  font-size: 13px; font-weight: 600; color: var(--ink2);
+}
+
+.level-bar { height: 8px; border-radius: 4px; transition: width 0.4s ease; }
+
+.word-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border-radius: 10px; border: 1px solid var(--warm);
+  background: var(--card);
+}
+
+.result-overlay {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  border-radius: 16px; z-index: 5;
+}
+.result-correct { background: rgba(45,134,89,0.12); }
+.result-wrong { background: rgba(192,57,43,0.12); }
+
+.mode-tabs {
+  display: flex; gap: 4px; background: var(--warm); border-radius: 12px; padding: 4px;
+}
+.mode-tab {
+  flex: 1; padding: 8px 4px; border-radius: 9px; border: none;
+  font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 600;
+  color: var(--ink2); background: transparent; cursor: pointer; transition: all 0.15s;
+}
+.mode-tab.active { background: var(--card); color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+
+h1 { font-family: 'Lora', serif; font-size: 32px; font-weight: 700; }
+h2 { font-family: 'Lora', serif; font-size: 26px; font-weight: 700; }
+
+.confirm-modal {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.confirm-box {
+  background: var(--card); border-radius: 20px; padding: 28px 24px;
+  max-width: 340px; width: 100%; box-shadow: 0 8px 40px rgba(0,0,0,0.15);
+}
+`;
+
+/* ── main component ──────────────────────────────────────────── */
+function VocabTrainer() {
+  const [words, setWords] = useState([]);
+  const [view, setView] = useState("home");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      setWords(JSON.parse(stored));
+    }
+    setLoading(false);
+  }, []);
+
+  const save = useCallback((next) => {
+    setWords(next);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  }, []);
+
+  if (loading) return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", fontFamily: "'Lora', serif", fontSize: 28, color: "#5c4f3d" }}>
+      <style>{CSS}</style>
+      Loading...
+    </div>
+  );
+
+  return (
+    <>
+      <style>{CSS}</style>
+      <div className="app">
+        {view === "home" && <HomeView words={words} setView={setView} />}
+        {view === "add" && <AddView words={words} save={save} />}
+        {view === "practice" && <PracticeView words={words} save={save} />}
+        {view === "stats" && <StatsView words={words} save={save} />}
+      </div>
+      <Nav view={view} setView={setView} />
+    </>
+  );
+}
+
+/* ── nav ─────────────────────────────────────────────────────── */
+function Nav({ view, setView }) {
+  const items = [
+    { id: "home", icon: "\u{1F3E0}", label: "Home" },
+    { id: "add", icon: "\u270F\uFE0F", label: "Add" },
+    { id: "practice", icon: "\u{1F3B4}", label: "Practice" },
+    { id: "stats", icon: "\u{1F4CA}", label: "Stats" },
+  ];
+  return (
+    <div className="nav">
+      {items.map((it) => (
+        <button key={it.id} className={view === it.id ? "active" : ""} onClick={() => setView(it.id)}>
+          <span className="nav-icon">{it.icon}</span>
+          {it.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ── home ────────────────────────────────────────────────────── */
+function HomeView({ words, setView }) {
+  const withArticle = words.filter((w) => w.article);
+  return (
+    <div className="fade-in" style={{ paddingTop: 40 }}>
+      <div style={{ textAlign: "center", marginBottom: 32 }}>
+        <h1 style={{ fontSize: 38, marginBottom: 4 }}>MischMasch</h1>
+        <p style={{ color: "var(--ink2)", fontSize: 14, fontWeight: 500 }}>Deutsch \u2194 Fran\u00e7ais</p>
+      </div>
+
+      <div className="card" style={{ marginBottom: 20, padding: 24 }}>
+        <div style={{ fontSize: 48, marginBottom: 4, position: "relative" }}>{words.length === 0 ? "\u{1F4DD}" : "\u{1F4DA}"}</div>
+        <div style={{ fontFamily: "'Lora', serif", fontSize: 24, fontWeight: 700, position: "relative" }}>
+          {words.length} {words.length === 1 ? "word" : "words"}
+        </div>
+        {withArticle.length > 0 && (
+          <div style={{ fontSize: 13, color: "var(--ink2)", marginTop: 4, position: "relative" }}>
+            {withArticle.length} with article
+          </div>
+        )}
+      </div>
+
+      {words.length === 0 ? (
+        <button className="btn btn-primary" onClick={() => setView("add")}>
+          Add your first words
+        </button>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <button className="btn btn-primary" onClick={() => setView("practice")}>
+            Start practicing
+          </button>
+          <button className="btn btn-secondary" onClick={() => setView("add")}>
+            Add more words
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── add words ───────────────────────────────────────────────── */
+function AddView({ words, save }) {
+  const [text, setText] = useState("");
+  const [preview, setPreview] = useState(null);
+  const [showList, setShowList] = useState(false);
+  const [deleteId, setDeleteId] = useState(null);
+
+  const handleParse = () => {
+    const parsed = parseTable(text);
+    setPreview(parsed.length > 0 ? parsed : []);
+  };
+
+  const handleConfirm = () => {
+    if (!preview || preview.length === 0) return;
+    const merged = [...words];
+    for (const p of preview) {
+      const exists = merged.find((w) => w.de.toLowerCase() === p.de.toLowerCase() && w.fr.toLowerCase() === p.fr.toLowerCase());
+      if (!exists) merged.push(p);
+    }
+    save(merged);
+    setText("");
+    setPreview(null);
+  };
+
+  const handleDelete = (idx) => {
+    save(words.filter((_, i) => i !== idx));
+    setDeleteId(null);
+  };
+
+  return (
+    <div className="fade-in" style={{ paddingTop: 32 }}>
+      <h1 style={{ marginBottom: 20 }}>Add Words</h1>
+
+      <div style={{ marginBottom: 8, fontSize: 13, color: "var(--ink2)", fontWeight: 500 }}>
+        Paste your vocabulary (German | French):
+      </div>
+      <textarea
+        value={text}
+        onChange={(e) => { setText(e.target.value); setPreview(null); }}
+        placeholder={"der Hund | le chien\ndie Katze | le chat\ndas Haus | la maison"}
+      />
+      <div style={{ marginTop: 10 }}>
+        <button className="btn btn-primary" onClick={handleParse} disabled={!text.trim()}>
+          Parse
+        </button>
+      </div>
+
+      {preview !== null && (
+        <div className="fade-in" style={{ marginTop: 20 }}>
+          {preview.length === 0 ? (
+            <div className="card" style={{ padding: 20 }}>
+              <div style={{ position: "relative", color: "var(--red)", fontWeight: 600 }}>
+                No word pairs found. Try tab, pipe, or semicolon as separator.
+              </div>
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10, color: "var(--accent)" }}>
+                Found {preview.length} word pair{preview.length !== 1 ? "s" : ""}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 }}>
+                {preview.map((p, i) => (
+                  <div key={i} className="word-row" style={{ fontSize: 14 }}>
+                    <span style={{ fontWeight: 600 }}>
+                      {p.article && <span style={{ color: "var(--accent2)" }}>{p.article} </span>}
+                      {p.de}
+                    </span>
+                    <span style={{ color: "var(--ink2)" }}>{"\u2192"}</span>
+                    <span>{p.fr}</span>
+                  </div>
+                ))}
+              </div>
+              <button className="btn btn-green" onClick={handleConfirm}>
+                Add {preview.length} word{preview.length !== 1 ? "s" : ""}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {words.length > 0 && (
+        <div style={{ marginTop: 32 }}>
+          <button className="btn btn-outline btn-small" style={{ marginBottom: 12 }} onClick={() => setShowList(!showList)}>
+            {showList ? "Hide" : "Show"} word list ({words.length})
+          </button>
+          {showList && (
+            <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {words.map((w, i) => (
+                <div key={i} className="word-row" style={{ fontSize: 14 }}>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontWeight: 600 }}>
+                      {w.article && <span style={{ color: "var(--accent2)" }}>{w.article} </span>}
+                      {w.de}
+                    </span>
+                    <span style={{ color: "var(--ink2)", margin: "0 6px" }}>{"\u2192"}</span>
+                    <span>{w.fr}</span>
+                  </div>
+                  <button
+                    onClick={() => setDeleteId(i)}
+                    style={{ background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontSize: 18, padding: "0 4px" }}
+                  >
+                    {"\u00D7"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {deleteId !== null && (
+        <div className="confirm-modal" onClick={() => setDeleteId(null)}>
+          <div className="confirm-box" onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ marginBottom: 8 }}>Delete word?</h2>
+            <p style={{ fontSize: 14, color: "var(--ink2)", marginBottom: 20 }}>
+              {words[deleteId]?.article && `${words[deleteId].article} `}{words[deleteId]?.de} {"\u2192"} {words[deleteId]?.fr}
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="btn btn-secondary" onClick={() => setDeleteId(null)}>Cancel</button>
+              <button className="btn btn-red" onClick={() => handleDelete(deleteId)}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── practice ────────────────────────────────────────────────── */
+function PracticeView({ words, save }) {
+  const [mode, setMode] = useState("type");
+  const [current, setCurrent] = useState(null);
+  const [direction, setDirection] = useState("de>fr");
+  const [choices, setChoices] = useState([]);
+  const [input, setInput] = useState("");
+  const [result, setResult] = useState(null);
+  const [correctAnswer, setCorrectAnswer] = useState("");
+  const [choiceStates, setChoiceStates] = useState({});
+  const [streak, setStreak] = useState(0);
+  const [sessionCount, setSessionCount] = useState(0);
+  const inputRef = useRef(null);
+
+  const wordsWithArticle = words.filter((w) => w.article);
+  const hasEnough = mode === "gender" ? wordsWithArticle.length >= 1 : (mode === "choice" ? words.length >= 4 : words.length >= 1);
+
+  const nextCard = useCallback(() => {
+    setResult(null);
+    setInput("");
+    setChoiceStates({});
+    setCorrectAnswer("");
+
+    if (mode === "gender") {
+      const pool = words.filter((w) => w.article);
+      if (pool.length === 0) return;
+      const w = weightedPick(pool, getGenderLevel);
+      setCurrent(w);
+    } else {
+      const dir = Math.random() < 0.5 ? "de>fr" : "fr>de";
+      setDirection(dir);
+      const w = weightedPick(words, getLevel);
+      setCurrent(w);
+      if (mode === "choice") {
+        const field = dir === "de>fr" ? "fr" : "de";
+        setChoices(pickChoices(w, words, field));
+      }
+    }
+    setTimeout(() => inputRef.current?.focus(), 100);
+  }, [words, mode]);
+
+  useEffect(() => {
+    if (hasEnough) nextCard();
+  }, [mode]);
+
+  const updateWord = useCallback((word, field, delta) => {
+    const next = words.map((w) =>
+      w.de === word.de && w.fr === word.fr ? { ...w, [field]: (w[field] || 0) + delta } : w
+    );
+    save(next);
+  }, [words, save]);
+
+  const handleTypeSubmit = () => {
+    if (!input.trim() || result) return;
+    const expected = direction === "de>fr" ? current.fr : current.de;
+    const isCorrect = input.trim().toLowerCase() === expected.toLowerCase();
+    setResult(isCorrect ? "correct" : "wrong");
+    setCorrectAnswer(expected);
+    setSessionCount((c) => c + 1);
+    if (isCorrect) {
+      updateWord(current, "correct", 1);
+      setStreak((s) => s + 1);
+      setTimeout(nextCard, 900);
+    } else {
+      updateWord(current, "wrong", 1);
+      setStreak(0);
+    }
+  };
+
+  const handleChoice = (chosen, idx) => {
+    if (result) return;
+    const field = direction === "de>fr" ? "fr" : "de";
+    const isCorrect = chosen[field] === current[field];
+    const states = {};
+    if (isCorrect) {
+      states[idx] = "correct";
+    } else {
+      states[idx] = "wrong";
+      const correctIdx = choices.findIndex((c) => c[field] === current[field]);
+      states[correctIdx] = "correct";
+    }
+    setChoiceStates(states);
+    setResult(isCorrect ? "correct" : "wrong");
+    setSessionCount((c) => c + 1);
+    if (isCorrect) {
+      updateWord(current, "correct", 1);
+      setStreak((s) => s + 1);
+    } else {
+      updateWord(current, "wrong", 1);
+      setStreak(0);
+    }
+    setTimeout(nextCard, 1200);
+  };
+
+  const handleGender = (chosen) => {
+    if (result) return;
+    const isCorrect = chosen === current.article;
+    setResult(isCorrect ? "correct" : "wrong");
+    setCorrectAnswer(current.article);
+    setSessionCount((c) => c + 1);
+
+    const states = {};
+    ["der", "die", "das"].forEach((g) => {
+      if (g === chosen && !isCorrect) states[g] = "wrong";
+      if (g === current.article) states[g] = "correct";
+    });
+    setChoiceStates(states);
+
+    if (isCorrect) {
+      updateWord(current, "genderCorrect", 1);
+      setStreak((s) => s + 1);
+    } else {
+      updateWord(current, "genderWrong", 1);
+      setStreak(0);
+    }
+    setTimeout(nextCard, 1200);
+  };
+
+  if (words.length === 0) {
+    return (
+      <div className="fade-in" style={{ paddingTop: 40, textAlign: "center" }}>
+        <h1 style={{ marginBottom: 16 }}>Practice</h1>
+        <div className="card" style={{ padding: 32 }}>
+          <div style={{ fontSize: 40, marginBottom: 8, position: "relative" }}>{"\u{1F4DD}"}</div>
+          <p style={{ color: "var(--ink2)", fontSize: 15, position: "relative" }}>Add some words first to start practicing!</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fade-in" style={{ paddingTop: 32 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <h1>Practice</h1>
+        {sessionCount > 0 && (
+          <div className="streak-badge">
+            {"\u{1F525}"} {streak}
+          </div>
+        )}
+      </div>
+
+      <div className="mode-tabs" style={{ marginBottom: 20 }}>
+        <button className={`mode-tab ${mode === "type" ? "active" : ""}`} onClick={() => setMode("type")}>Type</button>
+        <button className={`mode-tab ${mode === "choice" ? "active" : ""}`} onClick={() => setMode("choice")}>Choice</button>
+        <button className={`mode-tab ${mode === "gender" ? "active" : ""}`} onClick={() => setMode("gender")}>der/die/das</button>
+      </div>
+
+      {!hasEnough ? (
+        <div className="card" style={{ padding: 28 }}>
+          <p style={{ color: "var(--ink2)", fontSize: 14, position: "relative" }}>
+            {mode === "choice"
+              ? "You need at least 4 words for multiple choice."
+              : "Add words with articles (e.g. 'der Hund') to practice gender."}
+          </p>
+        </div>
+      ) : current ? (
+        <div className="fade-in" key={current.de + current.fr + mode + direction + sessionCount}>
+          <div className="card" style={{ marginBottom: 20, minHeight: 140, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+            {result && (
+              <div className={`result-overlay ${result === "correct" ? "result-correct" : "result-wrong"}`}>
+                <span style={{ fontSize: 56 }}>{result === "correct" ? "\u2713" : "\u2717"}</span>
+              </div>
+            )}
+            <div className="card-hint" style={{ marginBottom: 12, position: "relative" }}>
+              {mode === "gender" ? "What article?" : direction === "de>fr" ? "Deutsch \u2192 Fran\u00e7ais" : "Fran\u00e7ais \u2192 Deutsch"}
+            </div>
+            <div className="card-word">
+              {mode === "gender"
+                ? current.de
+                : direction === "de>fr"
+                  ? `${current.article ? current.article + " " : ""}${current.de}`
+                  : current.fr}
+            </div>
+          </div>
+
+          {mode === "type" && (
+            <div>
+              <input
+                ref={inputRef}
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && (result === "wrong" ? nextCard() : handleTypeSubmit())}
+                placeholder={direction === "de>fr" ? "Type in French..." : "Type in German..."}
+                disabled={result === "correct"}
+                autoFocus
+              />
+              {result === "wrong" && (
+                <div className="fade-in" style={{ marginTop: 12, padding: 14, borderRadius: 12, background: "#fdecea", textAlign: "center" }}>
+                  <div style={{ fontSize: 13, color: "var(--red)", fontWeight: 600, marginBottom: 4 }}>
+                    Correct answer:
+                  </div>
+                  <div style={{ fontFamily: "'Lora', serif", fontSize: 24, color: "var(--ink)" }}>
+                    {correctAnswer}
+                  </div>
+                </div>
+              )}
+              <div style={{ marginTop: 12 }}>
+                {result === "wrong" ? (
+                  <button className="btn btn-secondary" onClick={nextCard}>Next {"\u2192"}</button>
+                ) : (
+                  <button className="btn btn-primary" onClick={handleTypeSubmit} disabled={!input.trim()}>Check</button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {mode === "choice" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {choices.map((c, i) => (
+                <button
+                  key={i}
+                  className={`choice-btn ${choiceStates[i] === "correct" ? "choice-correct" : ""} ${choiceStates[i] === "wrong" ? "choice-wrong" : ""}`}
+                  onClick={() => handleChoice(c, i)}
+                  disabled={result !== null}
+                >
+                  {direction === "de>fr" ? c.fr : `${c.article ? c.article + " " : ""}${c.de}`}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {mode === "gender" && (
+            <div style={{ display: "flex", gap: 10 }}>
+              {["der", "die", "das"].map((g) => (
+                <button
+                  key={g}
+                  className={`gender-btn ${choiceStates[g] === "correct" ? "choice-correct" : ""} ${choiceStates[g] === "wrong" ? "choice-wrong" : ""}`}
+                  onClick={() => handleGender(g)}
+                  disabled={result !== null}
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* ── stats ────────────────────────────────────────────────────── */
+function StatsView({ words, save }) {
+  const [confirm, setConfirm] = useState(false);
+
+  const counts = [0, 0, 0, 0];
+  words.forEach((w) => counts[getLevel(w)]++);
+  const genderCounts = [0, 0, 0, 0];
+  words.filter((w) => w.article).forEach((w) => genderCounts[getGenderLevel(w)]++);
+  const total = words.length;
+  const withArticle = words.filter((w) => w.article).length;
+
+  const resetAll = () => {
+    const next = words.map((w) => ({ ...w, correct: 0, wrong: 0, genderCorrect: 0, genderWrong: 0 }));
+    save(next);
+    setConfirm(false);
+  };
+
+  if (words.length === 0) {
+    return (
+      <div className="fade-in" style={{ paddingTop: 40, textAlign: "center" }}>
+        <h1 style={{ marginBottom: 16 }}>Stats</h1>
+        <div className="card" style={{ padding: 32 }}>
+          <div style={{ fontSize: 40, marginBottom: 8, position: "relative" }}>{"\u{1F4CA}"}</div>
+          <p style={{ color: "var(--ink2)", fontSize: 15, position: "relative" }}>Nothing to show yet. Add and practice some words!</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fade-in" style={{ paddingTop: 32 }}>
+      <h1 style={{ marginBottom: 20 }}>Stats</h1>
+
+      <div className="card" style={{ padding: 20, marginBottom: 16 }}>
+        <h2 style={{ fontSize: 20, marginBottom: 14, position: "relative" }}>Translation Progress</h2>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, position: "relative" }}>
+          {LEVELS.map((lv, i) => (
+            <div key={i}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+                <span style={{ color: lv.color }}>{lv.label}</span>
+                <span style={{ color: "var(--ink2)" }}>{counts[i]}</span>
+              </div>
+              <div style={{ background: "var(--warm)", borderRadius: 4, height: 8, overflow: "hidden" }}>
+                <div
+                  className="level-bar"
+                  style={{ width: total ? `${(counts[i] / total) * 100}%` : "0%", background: lv.color }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {withArticle > 0 && (
+        <div className="card" style={{ padding: 20, marginBottom: 16 }}>
+          <h2 style={{ fontSize: 20, marginBottom: 14, position: "relative" }}>Gender Progress</h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, position: "relative" }}>
+            {LEVELS.map((lv, i) => (
+              <div key={i}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+                  <span style={{ color: lv.color }}>{lv.label}</span>
+                  <span style={{ color: "var(--ink2)" }}>{genderCounts[i]}</span>
+                </div>
+                <div style={{ background: "var(--warm)", borderRadius: 4, height: 8, overflow: "hidden" }}>
+                  <div
+                    className="level-bar"
+                    style={{ width: withArticle ? `${(genderCounts[i] / withArticle) * 100}%` : "0%", background: lv.color }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="card" style={{ padding: 20, marginBottom: 16 }}>
+        <h2 style={{ fontSize: 20, marginBottom: 14, position: "relative" }}>Word Details</h2>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 300, overflowY: "auto", position: "relative" }}>
+          {words.map((w, i) => {
+            const lv = getLevel(w);
+            return (
+              <div key={i} className="word-row" style={{ fontSize: 13 }}>
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontWeight: 600 }}>
+                    {w.article && <span style={{ color: "var(--accent2)" }}>{w.article} </span>}
+                    {w.de}
+                  </span>
+                  <span style={{ color: "var(--ink2)", margin: "0 4px" }}>{"\u2192"}</span>
+                  <span>{w.fr}</span>
+                </div>
+                <span
+                  style={{
+                    fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
+                    background: LEVELS[lv].bg, color: LEVELS[lv].color,
+                  }}
+                >
+                  {LEVELS[lv].label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <button className="btn btn-outline" style={{ color: "var(--red)", borderColor: "#fdecea" }} onClick={() => setConfirm(true)}>
+        Reset all progress
+      </button>
+
+      {confirm && (
+        <div className="confirm-modal" onClick={() => setConfirm(false)}>
+          <div className="confirm-box" onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ marginBottom: 8 }}>Reset progress?</h2>
+            <p style={{ fontSize: 14, color: "var(--ink2)", marginBottom: 20 }}>
+              This resets all stats for every word. Your word list stays intact.
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="btn btn-secondary" onClick={() => setConfirm(false)}>Cancel</button>
+              <button className="btn btn-red" onClick={resetAll}>Reset</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── render ───────────────────────────────────────────────────── */
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<VocabTrainer />);
+  </script>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./service-worker.js');
+    }
+  </script>
+</body>
+</html>
