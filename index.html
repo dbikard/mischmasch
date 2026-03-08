@@ -394,7 +394,7 @@ function HomeView({ words, categories, setView }) {
     <div className="fade-in" style={{ paddingTop: 40 }}>
       <div style={{ textAlign: "center", marginBottom: 32 }}>
         <h1 style={{ fontSize: 38, marginBottom: 4 }}>MischMasch</h1>
-        <p style={{ color: "var(--ink2)", fontSize: 14, fontWeight: 500 }}>Deutsch \u2194 Fran\u00e7ais</p>
+        <p style={{ color: "var(--ink2)", fontSize: 14, fontWeight: 500 }}>Deutsch ↔ Français</p>
       </div>
 
       <div className="card" style={{ marginBottom: 20, padding: 24 }}>
@@ -404,7 +404,7 @@ function HomeView({ words, categories, setView }) {
         </div>
         {categories.filter((c) => catCounts[c.id]).length > 1 && (
           <div style={{ fontSize: 13, color: "var(--ink2)", marginTop: 6, position: "relative" }}>
-            {categories.filter((c) => catCounts[c.id]).map((c) => `${c.name} (${catCounts[c.id]})`).join(" \u00b7 ")}
+            {categories.filter((c) => catCounts[c.id]).map((c) => `${c.name} (${catCounts[c.id]})`).join(" · ")}
           </div>
         )}
         {withArticle.length > 0 && (
@@ -782,7 +782,7 @@ function PracticeView({ words, categories, save }) {
               </div>
             )}
             <div className="card-hint" style={{ marginBottom: 12, position: "relative" }}>
-              {mode === "gender" ? "What article?" : direction === "de>fr" ? "Deutsch \u2192 Fran\u00e7ais" : "Fran\u00e7ais \u2192 Deutsch"}
+              {mode === "gender" ? "What article?" : direction === "de>fr" ? "Deutsch → Français" : "Français → Deutsch"}
             </div>
             <div className="card-word">
               {mode === "gender"
