@@ -657,12 +657,21 @@ function PracticeView({ words, categories, save }) {
 
   const handleTypeSubmit = () => {
     if (!input.trim() || result) return;
-    const expected = direction === "de>fr" ? current.fr : current.de;
-    const alternatives = expected.split("/").map((s) => s.trim().toLowerCase());
+    const rawExpected = direction === "de>fr" ? current.fr : current.de;
+    const displayExpected = direction === "fr>de" && current.article
+      ? current.article + " " + current.de
+      : rawExpected;
+    const alternatives = rawExpected.split("/").map((s) => s.trim().toLowerCase());
+    // Also accept "article + word" when translating to German
+    if (direction === "fr>de" && current.article) {
+      rawExpected.split("/").forEach((s) => {
+        alternatives.push((current.article + " " + s.trim()).toLowerCase());
+      });
+    }
     const userInput = input.trim().toLowerCase();
     const isCorrect = alternatives.some((alt) => userInput === alt || normalizeText(userInput) === normalizeText(alt));
     setResult(isCorrect ? "correct" : "wrong");
-    setCorrectAnswer(expected);
+    setCorrectAnswer(displayExpected);
     setSessionCount((c) => c + 1);
     if (isCorrect) {
       updateWord(current, "correct", 1);
