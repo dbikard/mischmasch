@@ -1,4 +1,13 @@
 [
   { "id": "accessoires", "name": "Accessoires", "file": "accessoires.tsv" },
-  { "id": "klamotten", "name": "Klamotten", "file": "klamotten.tsv" }
+  { "id": "klamotten", "name": "Klamotten", "file": "klamotten.tsv" },
+  { "id": "farben", "name": "Farben", "file": "farben.tsv" },
+  { "id": "frisur", "name": "Frisur", "file": "frisur.tsv" },
+  { "id": "stil", "name": "Stil", "file": "stil.tsv" },
+  { "id": "figur", "name": "Figur", "file": "figur.tsv" },
+  { "id": "hobbies", "name": "Hobbies", "file": "hobbies.tsv" },
+  { "id": "schultasche", "name": "Schultasche", "file": "schultasche.tsv" },
+  { "id": "klassenzimmer", "name": "Klassenzimmer", "file": "klassenzimmer.tsv" },
+  { "id": "maeppchen", "name": "Mäppchen", "file": "maeppchen.tsv" },
+  { "id": "meinungen", "name": "Meinungen", "file": "meinungen.tsv" }
 ]
