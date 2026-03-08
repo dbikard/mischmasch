@@ -24,6 +24,7 @@ const { useState, useEffect, useCallback, useRef, useMemo } = React;
 const STORAGE_KEY = "vocab-de-fr";
 const CATEGORIES_KEY = "vocab-de-fr-categories";
 const FILTER_KEY = "vocab-de-fr-filter";
+const STREAK_KEY = "vocab-de-fr-streak";
 
 /* ── helpers ─────────────────────────────────────────────────── */
 function shuffle(a) {
@@ -80,8 +81,28 @@ const LEVELS = [
   { label: "Mastered", color: "#1e8449", bg: "#e8f8f0" },
 ];
 
-function weightedPick(words, levelFn) {
-  const weights = words.map((w) => [8, 5, 2, 1][levelFn(w)]);
+function getTimeWeight(word) {
+  const hoursSince = (Date.now() - (word.lastPracticed || 0)) / 3600000;
+  const level = getLevel(word);
+  if (level === 3) {
+    if (hoursSince > 168) return 6;
+    if (hoursSince > 48) return 3;
+    if (hoursSince > 24) return 2;
+    return 1;
+  }
+  if (level === 2) {
+    if (hoursSince > 48) return 3;
+    if (hoursSince > 24) return 2;
+    return 1;
+  }
+  return 1;
+}
+
+function weightedPick(words, levelFn, useTime) {
+  const weights = words.map((w) => {
+    const base = [8, 5, 2, 1][levelFn(w)];
+    return useTime ? base * getTimeWeight(w) : base;
+  });
   const total = weights.reduce((a, b) => a + b, 0);
   let r = Math.random() * total;
   for (let i = 0; i < words.length; i++) {
@@ -98,6 +119,33 @@ function pickChoices(correct, all, field, count = 4) {
 
 function wordKey(w) {
   return (w.de + "|" + w.fr).toLowerCase();
+}
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function yesterdayStr() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function loadStreak() {
+  try {
+    return JSON.parse(localStorage.getItem(STREAK_KEY)) || { count: 0, lastDate: "" };
+  } catch { return { count: 0, lastDate: "" }; }
+}
+
+function updateStreak() {
+  const s = loadStreak();
+  const today = todayStr();
+  if (s.lastDate === today) return s;
+  const next = s.lastDate === yesterdayStr()
+    ? { count: s.count + 1, lastDate: today }
+    : { count: 1, lastDate: today };
+  localStorage.setItem(STREAK_KEY, JSON.stringify(next));
+  return next;
 }
 
 /* ── styles ──────────────────────────────────────────────────── */
@@ -396,6 +444,15 @@ function HomeView({ words, categories, setView }) {
       <div style={{ textAlign: "center", marginBottom: 32 }}>
         <h1 style={{ fontSize: 38, marginBottom: 4 }}>MischMasch</h1>
         <p style={{ color: "var(--ink2)", fontSize: 14, fontWeight: 500 }}>Deutsch ↔ Français</p>
+        {(() => {
+          const s = loadStreak();
+          const isActive = s.lastDate === todayStr() || s.lastDate === yesterdayStr();
+          return isActive && s.count > 0 ? (
+            <div className="streak-badge" style={{ marginTop: 10, display: "inline-flex" }}>
+              {"\u{1F525}"} {s.count} day streak
+            </div>
+          ) : null;
+        })()}
       </div>
 
       <div className="card" style={{ marginBottom: 20, padding: 24 }}>
@@ -575,6 +632,7 @@ function PracticeView({ words, categories, save }) {
   const [streak, setStreak] = useState(0);
   const [sessionCount, setSessionCount] = useState(0);
   const inputRef = useRef(null);
+  const streakUpdated = useRef(false);
 
   // Category filter — default: all active
   const [activeCategories, setActiveCategories] = useState(() => {
@@ -630,12 +688,12 @@ function PracticeView({ words, categories, save }) {
     if (mode === "gender") {
       const pool = filteredWords.filter((w) => w.article);
       if (pool.length === 0) return;
-      const w = weightedPick(pool, getGenderLevel);
+      const w = weightedPick(pool, getGenderLevel, true);
       setCurrent(w);
     } else {
       const dir = Math.random() < 0.5 ? "de>fr" : "fr>de";
       setDirection(dir);
-      const w = weightedPick(filteredWords, getLevel);
+      const w = weightedPick(filteredWords, getLevel, true);
       setCurrent(w);
       if (mode === "choice") {
         const field = dir === "de>fr" ? "fr" : "de";
@@ -649,9 +707,16 @@ function PracticeView({ words, categories, save }) {
     if (hasEnough) nextCard();
   }, [mode, activeCategories]);
 
+  useEffect(() => {
+    if (sessionCount === 1 && !streakUpdated.current) {
+      streakUpdated.current = true;
+      updateStreak();
+    }
+  }, [sessionCount]);
+
   const updateWord = useCallback((word, field, delta) => {
     const next = words.map((w) =>
-      w.de === word.de && w.fr === word.fr ? { ...w, [field]: (w[field] || 0) + delta } : w
+      w.de === word.de && w.fr === word.fr ? { ...w, [field]: (w[field] || 0) + delta, lastPracticed: Date.now() } : w
     );
     save(next);
   }, [words, save]);
@@ -884,12 +949,25 @@ function PracticeView({ words, categories, save }) {
                   </div>
                 </div>
               )}
-              <div style={{ marginTop: 12 }}>
+              <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
                 {result === "wrong" ? (
                   <button className="btn btn-secondary" onClick={nextCard}>Next {"\u2192"}</button>
-                ) : (
-                  <button className="btn btn-primary" onClick={handleTypeSubmit} disabled={!input.trim()}>Check</button>
-                )}
+                ) : result === null ? (
+                  <>
+                    <button className="btn btn-outline btn-small" onClick={() => {
+                      const rawExpected = direction === "de>fr" ? current.fr : current.de;
+                      const displayExpected = direction === "fr>de" && current.article
+                        ? current.article + " " + current.de
+                        : rawExpected;
+                      setResult("wrong");
+                      setCorrectAnswer(displayExpected);
+                      setSessionCount((c) => c + 1);
+                      updateWord(current, "wrong", 1);
+                      setStreak(0);
+                    }}>Show answer</button>
+                    <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleTypeSubmit} disabled={!input.trim()}>Check</button>
+                  </>
+                ) : null}
               </div>
             </div>
           )}
@@ -945,7 +1023,7 @@ function StatsView({ words, categories, save }) {
   categories.forEach((c) => { catNames[c.id] = c.name; });
 
   const resetAll = () => {
-    const next = words.map((w) => ({ ...w, correct: 0, wrong: 0, genderCorrect: 0, genderWrong: 0 }));
+    const next = words.map((w) => ({ ...w, correct: 0, wrong: 0, genderCorrect: 0, genderWrong: 0, lastPracticed: 0 }));
     save(next);
     setConfirm(false);
   };
