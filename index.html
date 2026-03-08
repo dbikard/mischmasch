@@ -234,6 +234,7 @@ input[type="text"]:focus { border-color: var(--accent); }
   border-radius: 16px; z-index: 5;
 }
 .result-correct { background: rgba(45,134,89,0.12); }
+.result-partial { background: rgba(212,130,10,0.12); }
 .result-wrong { background: rgba(192,57,43,0.12); }
 
 .mode-tabs {
@@ -670,14 +671,36 @@ function PracticeView({ words, categories, save }) {
     }
     const userInput = input.trim().toLowerCase();
     const isCorrect = alternatives.some((alt) => userInput === alt || normalizeText(userInput) === normalizeText(alt));
-    setResult(isCorrect ? "correct" : "wrong");
-    setCorrectAnswer(displayExpected);
-    setSessionCount((c) => c + 1);
+
+    // Check for wrong article but correct word (fr>de only)
+    let isPartial = false;
+    if (!isCorrect && direction === "fr>de" && current.article) {
+      const articleMatch = userInput.match(/^(der|die|das)\s+(.+)$/i);
+      if (articleMatch) {
+        const typedWord = articleMatch[2].toLowerCase();
+        const wordAlts = rawExpected.split("/").map((s) => s.trim().toLowerCase());
+        isPartial = wordAlts.some((alt) => typedWord === alt || normalizeText(typedWord) === normalizeText(alt));
+      }
+    }
+
     if (isCorrect) {
+      setResult("correct");
+      setCorrectAnswer(displayExpected);
+      setSessionCount((c) => c + 1);
       updateWord(current, "correct", 2);
       setStreak((s) => s + 1);
       setTimeout(nextCard, 900);
+    } else if (isPartial) {
+      setResult("partial");
+      setCorrectAnswer(displayExpected);
+      setSessionCount((c) => c + 1);
+      updateWord(current, "correct", 0.5);
+      updateWord(current, "genderWrong", 1);
+      setTimeout(nextCard, 1500);
     } else {
+      setResult("wrong");
+      setCorrectAnswer(displayExpected);
+      setSessionCount((c) => c + 1);
       updateWord(current, "wrong", 1);
       setStreak(0);
     }
@@ -790,8 +813,8 @@ function PracticeView({ words, categories, save }) {
         <div className="fade-in" key={current.de + current.fr + mode + direction + sessionCount}>
           <div className="card" style={{ marginBottom: 20, minHeight: 140, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
             {result && (
-              <div className={`result-overlay ${result === "correct" ? "result-correct" : "result-wrong"}`}>
-                <span style={{ fontSize: 56 }}>{result === "correct" ? "\u2713" : "\u2717"}</span>
+              <div className={`result-overlay ${result === "correct" ? "result-correct" : result === "partial" ? "result-partial" : "result-wrong"}`}>
+                <span style={{ fontSize: 56 }}>{result === "correct" ? "\u2713" : result === "partial" ? "~" : "\u2717"}</span>
               </div>
             )}
             <div className="card-hint" style={{ marginBottom: 12, position: "relative" }}>
@@ -813,11 +836,21 @@ function PracticeView({ words, categories, save }) {
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && (result === "wrong" ? nextCard() : handleTypeSubmit())}
+                onKeyDown={(e) => e.key === "Enter" && (result === "wrong" ? nextCard() : result === "partial" ? null : handleTypeSubmit())}
                 placeholder={direction === "de>fr" ? "Type in French..." : "Type in German..."}
-                disabled={result === "correct"}
+                disabled={result === "correct" || result === "partial"}
                 autoFocus
               />
+              {result === "partial" && (
+                <div className="fade-in" style={{ marginTop: 12, padding: 14, borderRadius: 12, background: "#fef5e7", textAlign: "center" }}>
+                  <div style={{ fontSize: 13, color: "var(--accent)", fontWeight: 600, marginBottom: 4 }}>
+                    Correct word, but wrong article!
+                  </div>
+                  <div style={{ fontFamily: "'Lora', serif", fontSize: 24, color: "var(--ink)" }}>
+                    {correctAnswer}
+                  </div>
+                </div>
+              )}
               {result === "wrong" && (
                 <div className="fade-in" style={{ marginTop: 12, padding: 14, borderRadius: 12, background: "#fdecea", textAlign: "center" }}>
                   <div style={{ fontSize: 13, color: "var(--red)", fontWeight: 600, marginBottom: 4 }}>
