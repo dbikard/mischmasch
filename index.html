@@ -466,12 +466,12 @@ function AddView({ words, save }) {
       <h1 style={{ marginBottom: 20 }}>Add Words</h1>
 
       <div style={{ marginBottom: 8, fontSize: 13, color: "var(--ink2)", fontWeight: 500 }}>
-        Paste your vocabulary (German | French):
+        Paste your vocabulary (German ; French):
       </div>
       <textarea
         value={text}
         onChange={(e) => { setText(e.target.value); setPreview(null); }}
-        placeholder={"der Hund | le chien\ndie Katze | le chat\ndas Haus | la maison"}
+        placeholder={"der Hund ; le chien\ndie Katze ; le chat\ndas Haus ; la maison"}
       />
       <div style={{ marginTop: 10 }}>
         <button className="btn btn-primary" onClick={handleParse} disabled={!text.trim()}>
