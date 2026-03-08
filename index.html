@@ -700,6 +700,9 @@ function PracticeView({ words, categories, save }) {
       setCorrectAnswer(displayExpected);
       setSessionCount((c) => c + 1);
       updateWord(current, "correct", 2);
+      if (direction === "fr>de" && current.article && userInput.match(/^(der|die|das)\s+/i)) {
+        updateWord(current, "genderCorrect", 1);
+      }
       setStreak((s) => s + 1);
       setTimeout(nextCard, 900);
     } else if (partialType === "no-article") {
