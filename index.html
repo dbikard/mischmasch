@@ -21,6 +21,7 @@
   <script type="text/babel">
 const { useState, useEffect, useCallback, useRef, useMemo } = React;
 
+const APP_VERSION = "1.1";
 const STORAGE_KEY = "vocab-de-fr";
 const CATEGORIES_KEY = "vocab-de-fr-categories";
 const FILTER_KEY = "vocab-de-fr-filter";
@@ -444,6 +445,7 @@ function HomeView({ words, categories, setView }) {
       <div style={{ textAlign: "center", marginBottom: 32 }}>
         <h1 style={{ fontSize: 38, marginBottom: 4 }}>MischMasch</h1>
         <p style={{ color: "var(--ink2)", fontSize: 14, fontWeight: 500 }}>Deutsch ↔ Français</p>
+        <p style={{ color: "var(--ink2)", fontSize: 11, marginTop: 2, opacity: 0.5 }}>v{APP_VERSION}</p>
         {(() => {
           const s = loadStreak();
           const isActive = s.lastDate === todayStr() || s.lastDate === yesterdayStr();
