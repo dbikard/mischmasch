@@ -765,6 +765,15 @@ function PracticeView({ words, categories, save }) {
         alternatives.push((current.article + " " + s.trim()).toLowerCase());
       });
     }
+    // Also accept answers without French article when translating to French
+    if (direction === "de>fr") {
+      rawExpected.split("/").forEach((s) => {
+        const stripped = s.trim().replace(/^(les?|la|l'|un|une|des)\s+/i, "");
+        if (stripped.toLowerCase() !== s.trim().toLowerCase()) {
+          alternatives.push(stripped.toLowerCase());
+        }
+      });
+    }
     const userInput = input.trim().toLowerCase();
     const wordAlts = rawExpected.split("/").map((s) => s.trim().toLowerCase());
     const isCorrect = alternatives.some((alt) => userInput === alt || normalizeText(userInput) === normalizeText(alt));
