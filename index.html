@@ -26,6 +26,7 @@ const STORAGE_KEY = "vocab-de-fr";
 const CATEGORIES_KEY = "vocab-de-fr-categories";
 const FILTER_KEY = "vocab-de-fr-filter";
 const STREAK_KEY = "vocab-de-fr-streak";
+const TIME_STATS_KEY = "vocab-de-fr-time-stats";
 
 /* ── helpers ─────────────────────────────────────────────────── */
 function shuffle(a) {
@@ -147,6 +148,43 @@ function updateStreak() {
     : { count: 1, lastDate: today };
   localStorage.setItem(STREAK_KEY, JSON.stringify(next));
   return next;
+}
+
+/* ── german time helpers ─────────────────────────────────────── */
+const GERMAN_HOURS = ["zwölf", "eins", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun", "zehn", "elf"];
+
+function germanHourWord(h) {
+  return GERMAN_HOURS[h % 12];
+}
+
+function germanTime(h, m) {
+  const hh = ((h - 1) % 12) + 1;
+  const next = hh === 12 ? 1 : hh + 1;
+  const hWord = germanHourWord(hh);
+  const nWord = germanHourWord(next);
+  if (m === 0) return `${hh === 1 ? "ein" : hWord} Uhr`;
+  if (m === 5) return `fünf nach ${hWord}`;
+  if (m === 10) return `zehn nach ${hWord}`;
+  if (m === 15) return `viertel nach ${hWord}`;
+  if (m === 20) return `zwanzig nach ${hWord}`;
+  if (m === 25) return `fünf vor halb ${nWord}`;
+  if (m === 30) return `halb ${nWord}`;
+  if (m === 35) return `fünf nach halb ${nWord}`;
+  if (m === 40) return `zwanzig vor ${nWord}`;
+  if (m === 45) return `viertel vor ${nWord}`;
+  if (m === 50) return `zehn vor ${nWord}`;
+  if (m === 55) return `fünf vor ${nWord}`;
+  return "";
+}
+
+function formatDigital(h, m) {
+  return `${h}:${m.toString().padStart(2, "0")}`;
+}
+
+function loadTimeStats() {
+  try {
+    return JSON.parse(localStorage.getItem(TIME_STATS_KEY)) || { correct: 0, wrong: 0, bestStreak: 0 };
+  } catch { return { correct: 0, wrong: 0, bestStreak: 0 }; }
 }
 
 /* ── styles ──────────────────────────────────────────────────── */
@@ -422,6 +460,7 @@ function VocabTrainer() {
         {view === "home" && <HomeView words={words} categories={categories} setView={setView} />}
         {view === "add" && <AddView words={words} save={save} />}
         {view === "practice" && <PracticeView words={words} categories={categories} save={save} />}
+        {view === "time" && <TimeView />}
         {view === "stats" && <StatsView words={words} categories={categories} save={save} />}
       </div>
       <Nav view={view} setView={setView} />
@@ -435,6 +474,7 @@ function Nav({ view, setView }) {
     { id: "home", icon: "\u{1F3E0}", label: "Home" },
     { id: "add", icon: "\u270F\uFE0F", label: "Add" },
     { id: "practice", icon: "\u{1F3B4}", label: "Practice" },
+    { id: "time", icon: "\u{1F552}", label: "Uhrzeit" },
     { id: "stats", icon: "\u{1F4CA}", label: "Stats" },
   ];
   return (
@@ -1219,6 +1259,176 @@ function StatsView({ words, categories, save }) {
               <button className="btn btn-red" onClick={resetAll}>Reset</button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── clock ────────────────────────────────────────────────────── */
+function ClockFace({ hour, minute }) {
+  const size = 240;
+  const cx = size / 2;
+  const cy = size / 2;
+  const r = size / 2 - 10;
+  const toXY = (deg, len) => {
+    const rad = (deg - 90) * Math.PI / 180;
+    return [cx + len * Math.cos(rad), cy + len * Math.sin(rad)];
+  };
+  const hourAngle = ((hour % 12) + minute / 60) * 30;
+  const minuteAngle = minute * 6;
+  const [hx, hy] = toXY(hourAngle, r * 0.52);
+  const [mx, my] = toXY(minuteAngle, r * 0.78);
+
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: "block" }}>
+      <circle cx={cx} cy={cy} r={r} fill="#fffdf8" stroke="#2c2416" strokeWidth="3" />
+      {Array.from({ length: 60 }, (_, i) => {
+        const isHour = i % 5 === 0;
+        const [x1, y1] = toXY(i * 6, r - (isHour ? 12 : 5));
+        const [x2, y2] = toXY(i * 6, r - 2);
+        return (
+          <line
+            key={i}
+            x1={x1} y1={y1} x2={x2} y2={y2}
+            stroke="#2c2416"
+            strokeWidth={isHour ? 3 : 1}
+            strokeLinecap="round"
+          />
+        );
+      })}
+      {Array.from({ length: 12 }, (_, i) => {
+        const n = i + 1;
+        const [tx, ty] = toXY(n * 30, r - 28);
+        return (
+          <text
+            key={n}
+            x={tx} y={ty}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fontFamily="Lora, serif"
+            fontSize="20"
+            fontWeight="700"
+            fill="#2c2416"
+          >{n}</text>
+        );
+      })}
+      <line x1={cx} y1={cy} x2={hx} y2={hy} stroke="#2c2416" strokeWidth="7" strokeLinecap="round" />
+      <line x1={cx} y1={cy} x2={mx} y2={my} stroke="#c45a3c" strokeWidth="4" strokeLinecap="round" />
+      <circle cx={cx} cy={cy} r="6" fill="#2c2416" />
+      <circle cx={cx} cy={cy} r="2" fill="#c45a3c" />
+    </svg>
+  );
+}
+
+/* ── time view ───────────────────────────────────────────────── */
+function TimeView() {
+  const [hour, setHour] = useState(3);
+  const [minute, setMinute] = useState(0);
+  const [choices, setChoices] = useState([]);
+  const [result, setResult] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const [streak, setStreak] = useState(0);
+  const [stats, setStats] = useState(loadTimeStats);
+
+  const nextRound = useCallback(() => {
+    const h = Math.floor(Math.random() * 12) + 1;
+    const m = Math.floor(Math.random() * 12) * 5;
+    const correct = germanTime(h, m);
+    const wrongs = new Set();
+    let guard = 0;
+    while (wrongs.size < 3 && guard < 50) {
+      guard++;
+      const h2 = Math.floor(Math.random() * 12) + 1;
+      const m2 = Math.floor(Math.random() * 12) * 5;
+      const phrase = germanTime(h2, m2);
+      if (phrase !== correct) wrongs.add(phrase);
+    }
+    setHour(h);
+    setMinute(m);
+    setChoices(shuffle([correct, ...wrongs]));
+    setResult(null);
+    setSelected(null);
+  }, []);
+
+  useEffect(() => { nextRound(); }, [nextRound]);
+
+  const handleChoice = (phrase, idx) => {
+    if (result) return;
+    const correct = germanTime(hour, minute);
+    const isCorrect = phrase === correct;
+    setSelected(idx);
+    setResult(isCorrect ? "correct" : "wrong");
+    const newStreak = isCorrect ? streak + 1 : 0;
+    setStreak(newStreak);
+    const next = isCorrect
+      ? { ...stats, correct: stats.correct + 1, bestStreak: Math.max(stats.bestStreak, newStreak) }
+      : { ...stats, wrong: stats.wrong + 1 };
+    setStats(next);
+    localStorage.setItem(TIME_STATS_KEY, JSON.stringify(next));
+    setTimeout(nextRound, 1600);
+  };
+
+  const correctPhrase = germanTime(hour, minute);
+  const total = stats.correct + stats.wrong;
+  const accuracy = total > 0 ? Math.round((stats.correct / total) * 100) : 0;
+
+  return (
+    <div className="fade-in" style={{ paddingTop: 32 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <h1>Uhrzeit</h1>
+        <div style={{ display: "flex", gap: 6 }}>
+          {total > 0 && (
+            <div className="streak-badge">{accuracy}%</div>
+          )}
+          {streak > 0 && (
+            <div className="streak-badge">{"\u{1F525}"} {streak}</div>
+          )}
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 20, padding: 20, display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <div style={{ position: "relative" }}>
+          <ClockFace hour={hour} minute={minute} />
+        </div>
+        {result && (
+          <div className="fade-in" style={{ marginTop: 12, textAlign: "center", position: "relative" }}>
+            <div style={{ fontFamily: "'Lora', serif", fontSize: 22, fontWeight: 700, color: "var(--ink)" }}>
+              {formatDigital(hour, minute)}
+            </div>
+            <div style={{ fontSize: 15, color: result === "correct" ? "var(--green)" : "var(--red)", fontWeight: 600, marginTop: 2 }}>
+              {correctPhrase}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {choices.map((c, i) => {
+          const isSelected = selected === i;
+          const isRight = result && c === correctPhrase;
+          const cls = isRight
+            ? "choice-correct"
+            : isSelected && result === "wrong"
+              ? "choice-wrong"
+              : "";
+          return (
+            <button
+              key={i}
+              className={`choice-btn ${cls}`}
+              onClick={() => handleChoice(c, i)}
+              disabled={result !== null}
+              style={{ fontSize: 18 }}
+            >
+              {c}
+            </button>
+          );
+        })}
+      </div>
+
+      {total > 0 && (
+        <div style={{ marginTop: 16, fontSize: 12, color: "var(--ink2)", textAlign: "center" }}>
+          {stats.correct} correct · {stats.wrong} wrong · best streak {stats.bestStreak}
         </div>
       )}
     </div>
