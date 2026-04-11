@@ -21,7 +21,7 @@
   <script type="text/babel">
 const { useState, useEffect, useCallback, useRef, useMemo } = React;
 
-const APP_VERSION = "1.5";
+const APP_VERSION = "1.6";
 const STORAGE_KEY = "vocab-de-fr";
 const CATEGORIES_KEY = "vocab-de-fr-categories";
 const FILTER_KEY = "vocab-de-fr-filter";
@@ -1442,7 +1442,7 @@ function ClockFace({ hour, minute }) {
 const TIME_WORD_POOL = [
   "ein", "eins", "zwei", "drei", "vier", "fünf", "sechs",
   "sieben", "acht", "neun", "zehn", "elf", "zwölf", "zwanzig",
-  "viertel", "halb", "nach", "vor", "Uhr",
+  "viertel", "halb", "nach", "vor",
 ];
 
 function TimeView() {
@@ -1455,7 +1455,8 @@ function TimeView() {
 
   const nextRound = useCallback(() => {
     const h = Math.floor(Math.random() * 12) + 1;
-    const m = Math.floor(Math.random() * 12) * 5;
+    // Minutes 5..55 in 5-minute steps; skip 0 since the pool has no "Uhr".
+    const m = (Math.floor(Math.random() * 11) + 1) * 5;
     setHour(h);
     setMinute(m);
     setTokens([]);
