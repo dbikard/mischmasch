@@ -21,7 +21,7 @@
   <script type="text/babel">
 const { useState, useEffect, useCallback, useRef, useMemo } = React;
 
-const APP_VERSION = "1.6";
+const APP_VERSION = "1.7";
 const STORAGE_KEY = "vocab-de-fr";
 const CATEGORIES_KEY = "vocab-de-fr-categories";
 const FILTER_KEY = "vocab-de-fr-filter";
@@ -909,30 +909,40 @@ function PracticeView({ words, categories, save }) {
 
   const normalizeText = (s) => s.toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss").replace(/[éèê]/g, "e").replace(/[àâ]/g, "a").replace(/[ùû]/g, "u").replace(/[ôò]/g, "o").replace(/[îï]/g, "i").replace(/ç/g, "c").replace(/œ/g, "oe").replace(/'/g, "'");
 
+  // Split on "/" only when surrounded by whitespace (alternatives separator).
+  // A slash without surrounding whitespace (e.g. "an/rufen") marks a
+  // separable-verb prefix and must not split the word.
+  const splitAlternatives = (s) => s.split(/\s+\/\s+/).map((x) => x.trim());
+  // For any alternative containing an in-word slash, also accept the
+  // slash-less form: "an/rufen" matches both "an/rufen" and "anrufen".
+  const withSeparableForms = (alt) => alt.includes("/") ? [alt, alt.replace(/\//g, "")] : [alt];
+
   const handleTypeSubmit = () => {
     if (!input.trim() || result) return;
     const rawExpected = direction === "de>fr" ? current.fr : current.de;
     const displayExpected = direction === "fr>de" && current.article
       ? current.article + " " + current.de
       : rawExpected;
-    const alternatives = rawExpected.split("/").map((s) => s.trim().toLowerCase());
+    const baseAlts = splitAlternatives(rawExpected);
+    const expandedAlts = baseAlts.flatMap(withSeparableForms).map((s) => s.toLowerCase());
+    const alternatives = [...expandedAlts];
     // Also accept "article + word" when translating to German
     if (direction === "fr>de" && current.article) {
-      rawExpected.split("/").forEach((s) => {
-        alternatives.push((current.article + " " + s.trim()).toLowerCase());
+      expandedAlts.forEach((s) => {
+        alternatives.push((current.article + " " + s).toLowerCase());
       });
     }
     // Also accept answers without French article when translating to French
     if (direction === "de>fr") {
-      rawExpected.split("/").forEach((s) => {
-        const stripped = s.trim().replace(/^(les?|la|l'|un|une|des)\s+/i, "");
-        if (stripped.toLowerCase() !== s.trim().toLowerCase()) {
+      baseAlts.forEach((s) => {
+        const stripped = s.replace(/^(les?|la|l'|un|une|des)\s+/i, "");
+        if (stripped.toLowerCase() !== s.toLowerCase()) {
           alternatives.push(stripped.toLowerCase());
         }
       });
     }
     const userInput = input.trim().toLowerCase();
-    const wordAlts = rawExpected.split("/").map((s) => s.trim().toLowerCase());
+    const wordAlts = expandedAlts;
     const isCorrect = alternatives.some((alt) => userInput === alt || normalizeText(userInput) === normalizeText(alt));
 
     // Check partial matches for fr>de when word has an article
