@@ -23,7 +23,7 @@
   <script type="text/babel">
 const { useState, useEffect, useCallback, useRef, useMemo } = React;
 
-const APP_VERSION = "2.0";
+const APP_VERSION = "2.1";
 const STORAGE_KEY = "vocab-de-fr";
 const CATEGORIES_KEY = "vocab-de-fr-categories";
 const FILTER_KEY = "vocab-de-fr-filter";
@@ -1596,10 +1596,12 @@ function capFirst(s) { return s[0].toUpperCase() + s.slice(1); }
 // One round targets exactly one sentence. Template A seeds "Um" at the
 // start; template B seeds the capitalized subject pronoun. The starter
 // is locked in the slot, so only one string can be correct.
+// The clause ends with the complement (if any) then the separable
+// particle (if any), matching German main-clause word order.
 function tagesablaufRound(verb, subject, hour, minute, template) {
   const timePhrase = germanTime(hour, minute);
   const verbForm = verb[subject];
-  const tail = verb.tail;
+  const tail = [verb.complement, verb.particle].filter(Boolean).join(" ");
   const tailPart = tail ? " " + tail : "";
   if (template === "A") {
     return {
@@ -1630,16 +1632,26 @@ function pickTimeDistractors(hour, minute, count) {
 function buildTagesablaufPool(verb, hour, minute, subject, template) {
   // Time is delivered as a single fully-formed phrase (plus a couple of
   // wrong phrases as distractors) since the focus of this exercise is
-  // sentence structure, not time composition. The tail likewise stays as
-  // one token so the user places a single "end-of-clause" chunk.
+  // sentence structure, not time composition. The complement stays as
+  // one chunk, but the separable particle is always its own token so
+  // the learner places it at the very end of the clause.
   const timeOptions = shuffle([germanTime(hour, minute), ...pickTimeDistractors(hour, minute, 2)]);
   const conjugations = [...new Set(SUBJECTS.map((s) => verb[s]))];
-  const tailToken = verb.tail ? [verb.tail] : [];
+  const tailTokens = [];
+  if (verb.complement) tailTokens.push(verb.complement);
+  if (verb.particle) tailTokens.push(verb.particle);
   const extras = template === "A" ? [subject] : ["um"];
+  // Trap: for separable verbs, put the joined-prefix conjugations in the
+  // pool ("anrufe", "aufstehe", "fernsehe"...). Picking one means
+  // forgetting to split the particle off in a main clause.
+  const traps = verb.particle
+    ? SUBJECTS.map((s) => verb.particle + verb[s])
+    : [];
+  const verbChoices = shuffle([...conjugations, ...traps]);
   return [...new Set([
     ...timeOptions,
-    ...conjugations,
-    ...tailToken,
+    ...verbChoices,
+    ...tailTokens,
     ...extras,
   ])];
 }

@@ -1,8 +1,15 @@
+// complement = what goes mid-clause at the end but before any separable
+// particle (e.g. "eine Freundin", "in die Schule", "zu Mittag"). An empty
+// complement means there is none.
+// particle = separable prefix that drops to the very end of the clause
+// in a main clause ("auf", "an", "fern"). Empty when the verb is not
+// separable.
 window.TAGESABLAUF_DATA = [
   {
     inf: "auf/stehen",
     fr: "se lever",
-    tail: "auf",
+    complement: "",
+    particle: "auf",
     ich: "stehe",
     du: "stehst",
     er: "steht",
@@ -12,7 +19,8 @@ window.TAGESABLAUF_DATA = [
   {
     inf: "frühstücken",
     fr: "prendre le petit-déjeuner",
-    tail: "",
+    complement: "",
+    particle: "",
     ich: "frühstücke",
     du: "frühstückst",
     er: "frühstückt",
@@ -22,7 +30,8 @@ window.TAGESABLAUF_DATA = [
   {
     inf: "in die Schule gehen",
     fr: "aller à l'école",
-    tail: "in die Schule",
+    complement: "in die Schule",
+    particle: "",
     ich: "gehe",
     du: "gehst",
     er: "geht",
@@ -32,7 +41,8 @@ window.TAGESABLAUF_DATA = [
   {
     inf: "zu Mittag essen",
     fr: "déjeuner",
-    tail: "zu Mittag",
+    complement: "zu Mittag",
+    particle: "",
     ich: "esse",
     du: "isst",
     er: "isst",
@@ -42,7 +52,8 @@ window.TAGESABLAUF_DATA = [
   {
     inf: "nach Hause gehen",
     fr: "rentrer à la maison",
-    tail: "nach Hause",
+    complement: "nach Hause",
+    particle: "",
     ich: "gehe",
     du: "gehst",
     er: "geht",
@@ -52,7 +63,8 @@ window.TAGESABLAUF_DATA = [
   {
     inf: "eine Freundin an/rufen",
     fr: "appeler une amie",
-    tail: "eine Freundin an",
+    complement: "eine Freundin",
+    particle: "an",
     ich: "rufe",
     du: "rufst",
     er: "ruft",
@@ -62,7 +74,8 @@ window.TAGESABLAUF_DATA = [
   {
     inf: "zu Abend essen",
     fr: "dîner",
-    tail: "zu Abend",
+    complement: "zu Abend",
+    particle: "",
     ich: "esse",
     du: "isst",
     er: "isst",
@@ -72,7 +85,8 @@ window.TAGESABLAUF_DATA = [
   {
     inf: "fern/sehen",
     fr: "regarder la télé",
-    tail: "fern",
+    complement: "",
+    particle: "fern",
     ich: "sehe",
     du: "siehst",
     er: "sieht",
@@ -82,7 +96,8 @@ window.TAGESABLAUF_DATA = [
   {
     inf: "schlafen gehen",
     fr: "aller se coucher",
-    tail: "schlafen",
+    complement: "schlafen",
+    particle: "",
     ich: "gehe",
     du: "gehst",
     er: "geht",
