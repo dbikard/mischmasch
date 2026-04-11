@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mischmasch-v6';
+const CACHE_NAME = 'mischmasch-v7';
 const ASSETS = [
   './',
   './index.html',
@@ -17,6 +17,7 @@ const ASSETS = [
   './words/klassenzimmer.tsv',
   './words/maeppchen.tsv',
   './words/meinungen.tsv',
+  './words/verben.tsv',
 ];
 
 self.addEventListener('install', (event) => {
