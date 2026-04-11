@@ -23,7 +23,7 @@
   <script type="text/babel">
 const { useState, useEffect, useCallback, useRef, useMemo } = React;
 
-const APP_VERSION = "1.8";
+const APP_VERSION = "2.0";
 const STORAGE_KEY = "vocab-de-fr";
 const CATEGORIES_KEY = "vocab-de-fr-categories";
 const FILTER_KEY = "vocab-de-fr-filter";
@@ -355,6 +355,18 @@ body, #root { background: var(--cream); font-family: 'DM Sans', sans-serif; colo
   border-color: var(--accent);
   background: #fef5f2;
   color: var(--accent);
+}
+.time-token-locked {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  border-radius: 20px;
+  border: 2px solid var(--ink2);
+  background: var(--warm);
+  font-family: 'Lora', serif;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
 }
 
 .gender-btn {
@@ -1578,33 +1590,57 @@ function TimeView() {
 /* ── tagesablauf view ────────────────────────────────────────── */
 const SUBJECTS = ["ich", "du", "er", "sie", "wir"];
 const FR_PRON = { ich: "je", du: "tu", er: "il", sie: "elle", wir: "nous" };
-const PRONOUN_TOKENS = ["Ich", "ich", "Du", "du", "Er", "er", "Sie", "sie", "Wir", "wir"];
 
 function capFirst(s) { return s[0].toUpperCase() + s.slice(1); }
 
-function tagesablaufTargets(verb, subject, hour, minute) {
+// One round targets exactly one sentence. Template A seeds "Um" at the
+// start; template B seeds the capitalized subject pronoun. The starter
+// is locked in the slot, so only one string can be correct.
+function tagesablaufRound(verb, subject, hour, minute, template) {
   const timePhrase = germanTime(hour, minute);
   const verbForm = verb[subject];
   const tail = verb.tail;
-  const pron = subject;
-  const Pron = capFirst(subject);
   const tailPart = tail ? " " + tail : "";
-  return [
-    `Um ${timePhrase} ${verbForm} ${pron}${tailPart}`,
-    `${Pron} ${verbForm} um ${timePhrase}${tailPart}`,
-  ];
+  if (template === "A") {
+    return {
+      starter: "Um",
+      target: `Um ${timePhrase} ${verbForm} ${subject}${tailPart}`,
+    };
+  }
+  return {
+    starter: capFirst(subject),
+    target: `${capFirst(subject)} ${verbForm} um ${timePhrase}${tailPart}`,
+  };
 }
 
-function buildTagesablaufPool(verb, hour, minute) {
-  const timeWords = germanTime(hour, minute).split(" ");
-  const tailWords = verb.tail ? verb.tail.split(" ") : [];
-  const conjugations = SUBJECTS.map((s) => verb[s]);
+function pickTimeDistractors(hour, minute, count) {
+  const correct = germanTime(hour, minute);
+  const out = new Set();
+  let guard = 0;
+  while (out.size < count && guard < 80) {
+    guard++;
+    const h = Math.floor(Math.random() * 12) + 1;
+    const m = (Math.floor(Math.random() * 11) + 1) * 5;
+    const phrase = germanTime(h, m);
+    if (phrase !== correct) out.add(phrase);
+  }
+  return [...out];
+}
+
+function buildTagesablaufPool(verb, hour, minute, subject, template) {
+  // Time is delivered as a single fully-formed phrase (plus a couple of
+  // wrong phrases as distractors) since the focus of this exercise is
+  // sentence structure, not time composition. The tail likewise stays as
+  // one token so the user places a single "end-of-clause" chunk.
+  const timeOptions = shuffle([germanTime(hour, minute), ...pickTimeDistractors(hour, minute, 2)]);
+  const conjugations = [...new Set(SUBJECTS.map((s) => verb[s]))];
+  const tailToken = verb.tail ? [verb.tail] : [];
+  const extras = template === "A" ? [subject] : ["um"];
   return [...new Set([
-    "Um", "um",
-    ...PRONOUN_TOKENS,
+    ...timeOptions,
     ...conjugations,
-    ...timeWords,
-    ...tailWords,
+    ...tailToken,
+    ...extras,
   ])];
 }
 
@@ -1622,7 +1658,8 @@ function TagesablaufView() {
     const subject = SUBJECTS[Math.floor(Math.random() * SUBJECTS.length)];
     const hour = Math.floor(Math.random() * 12) + 1;
     const minute = (Math.floor(Math.random() * 11) + 1) * 5;
-    setRound({ verb, subject, hour, minute });
+    const template = Math.random() < 0.5 ? "A" : "B";
+    setRound({ verb, subject, hour, minute, template });
     setTokens([]);
     setResult(null);
   }, [data]);
@@ -1646,14 +1683,14 @@ function TagesablaufView() {
 
   const checkAnswer = () => {
     if (!round || result || tokens.length === 0) return;
-    const phrase = tokens.join(" ");
-    const [targetA, targetB] = tagesablaufTargets(round.verb, round.subject, round.hour, round.minute);
-    const isCorrect = phrase === targetA || phrase === targetB;
+    const { verb, subject, hour, minute, template } = round;
+    const { starter, target } = tagesablaufRound(verb, subject, hour, minute, template);
+    const phrase = [starter, ...tokens].join(" ");
+    const isCorrect = phrase === target;
     const newStreak = isCorrect ? streak + 1 : 0;
     setResult(isCorrect ? "correct" : "wrong");
     setStreak(newStreak);
     recordResult(isCorrect, newStreak);
-    setTimeout(nextRound, 2200);
   };
 
   if (!data || !round) {
@@ -1667,9 +1704,9 @@ function TagesablaufView() {
     );
   }
 
-  const { verb, subject, hour, minute } = round;
-  const pool = buildTagesablaufPool(verb, hour, minute);
-  const [targetA, targetB] = tagesablaufTargets(verb, subject, hour, minute);
+  const { verb, subject, hour, minute, template } = round;
+  const pool = buildTagesablaufPool(verb, hour, minute, subject, template);
+  const { starter, target } = tagesablaufRound(verb, subject, hour, minute, template);
   const slotClass = result === "correct"
     ? "time-slot-correct"
     : result === "wrong"
@@ -1698,30 +1735,24 @@ function TagesablaufView() {
               {formatDigital(hour, minute)}
             </div>
             <div style={{ fontSize: 15, color: result === "correct" ? "var(--green)" : "var(--red)", fontWeight: 600, marginTop: 2 }}>
-              {targetA}
-            </div>
-            <div style={{ fontSize: 13, color: "var(--ink2)", marginTop: 2, fontStyle: "italic" }}>
-              {targetB}
+              {target}
             </div>
           </div>
         )}
       </div>
 
       <div className={`time-slot ${slotClass}`}>
-        {tokens.length === 0 ? (
-          <span className="time-slot-empty">Tap words below to build the sentence</span>
-        ) : (
-          tokens.map((w, i) => (
-            <button
-              key={i}
-              className="time-token time-token-selected"
-              onClick={() => removeToken(i)}
-              disabled={result !== null}
-            >
-              {w}
-            </button>
-          ))
-        )}
+        <span className="time-token time-token-locked">{starter}</span>
+        {tokens.map((w, i) => (
+          <button
+            key={i}
+            className="time-token time-token-selected"
+            onClick={() => removeToken(i)}
+            disabled={result !== null}
+          >
+            {w}
+          </button>
+        ))}
       </div>
 
       <div className="time-pool">
@@ -1738,22 +1769,30 @@ function TagesablaufView() {
       </div>
 
       <div style={{ display: "flex", gap: 10 }}>
-        <button
-          className="btn btn-outline"
-          onClick={clearTokens}
-          disabled={result !== null || tokens.length === 0}
-          style={{ flex: 1 }}
-        >
-          Clear
-        </button>
-        <button
-          className="btn btn-primary"
-          onClick={checkAnswer}
-          disabled={result !== null || tokens.length === 0}
-          style={{ flex: 2 }}
-        >
-          Check
-        </button>
+        {result ? (
+          <button className="btn btn-primary" onClick={nextRound} style={{ flex: 1 }}>
+            Next {"\u2192"}
+          </button>
+        ) : (
+          <>
+            <button
+              className="btn btn-outline"
+              onClick={clearTokens}
+              disabled={tokens.length === 0}
+              style={{ flex: 1 }}
+            >
+              Clear
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={checkAnswer}
+              disabled={tokens.length === 0}
+              style={{ flex: 2 }}
+            >
+              Check
+            </button>
+          </>
+        )}
       </div>
 
       <ModuleStatsFooter stats={stats} />
