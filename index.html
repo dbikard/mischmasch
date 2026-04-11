@@ -21,7 +21,7 @@
   <script type="text/babel">
 const { useState, useEffect, useCallback, useRef, useMemo } = React;
 
-const APP_VERSION = "1.6";
+const APP_VERSION = "1.7";
 const STORAGE_KEY = "vocab-de-fr";
 const CATEGORIES_KEY = "vocab-de-fr-categories";
 const FILTER_KEY = "vocab-de-fr-filter";
@@ -583,6 +583,7 @@ function VocabTrainer() {
 // Nav entries and view routing are derived automatically.
 const MODULES = [
   { id: "time", icon: "\u{1F552}", label: "Uhrzeit", component: TimeView },
+  { id: "tagesablauf", icon: "\u{1F305}", label: "Alltag", component: TagesablaufView },
 ];
 
 /* ── nav ─────────────────────────────────────────────────────── */
@@ -1537,6 +1538,216 @@ function TimeView() {
 
       <div className="time-pool">
         {TIME_WORD_POOL.map((w) => (
+          <button
+            key={w}
+            className="time-token"
+            onClick={() => addToken(w)}
+            disabled={result !== null}
+          >
+            {w}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", gap: 10 }}>
+        <button
+          className="btn btn-outline"
+          onClick={clearTokens}
+          disabled={result !== null || tokens.length === 0}
+          style={{ flex: 1 }}
+        >
+          Clear
+        </button>
+        <button
+          className="btn btn-primary"
+          onClick={checkAnswer}
+          disabled={result !== null || tokens.length === 0}
+          style={{ flex: 2 }}
+        >
+          Check
+        </button>
+      </div>
+
+      <ModuleStatsFooter stats={stats} />
+    </div>
+  );
+}
+
+/* ── tagesablauf view ────────────────────────────────────────── */
+const SUBJECTS = ["ich", "du", "er", "sie", "wir"];
+const FR_PRON = { ich: "je", du: "tu", er: "il", sie: "elle", wir: "nous" };
+const PRONOUN_TOKENS = ["Ich", "ich", "Du", "du", "Er", "er", "Sie", "sie", "Wir", "wir"];
+
+function capFirst(s) { return s[0].toUpperCase() + s.slice(1); }
+
+function tagesablaufTargets(verb, subject, hour, minute) {
+  const timePhrase = germanTime(hour, minute);
+  const verbForm = verb[subject];
+  const tail = verb.tail;
+  const pron = subject;
+  const Pron = capFirst(subject);
+  const tailPart = tail ? " " + tail : "";
+  return [
+    `Um ${timePhrase} ${verbForm} ${pron}${tailPart}`,
+    `${Pron} ${verbForm} um ${timePhrase}${tailPart}`,
+  ];
+}
+
+function buildTagesablaufPool(verb, hour, minute) {
+  const timeWords = germanTime(hour, minute).split(" ");
+  const tailWords = verb.tail ? verb.tail.split(" ") : [];
+  const conjugations = SUBJECTS.map((s) => verb[s]);
+  return [...new Set([
+    "Um", "um",
+    ...PRONOUN_TOKENS,
+    ...conjugations,
+    ...timeWords,
+    ...tailWords,
+  ])];
+}
+
+function TagesablaufView() {
+  const [data, setData] = useState(null);
+  const [loadError, setLoadError] = useState(false);
+  const [round, setRound] = useState(null);
+  const [tokens, setTokens] = useState([]);
+  const [result, setResult] = useState(null);
+  const [streak, setStreak] = useState(0);
+  const [stats, recordResult] = useModuleStats("tagesablauf");
+
+  useEffect(() => {
+    fetch('./modules/tagesablauf.json')
+      .then((r) => {
+        if (!r.ok) throw new Error('not ok');
+        return r.json();
+      })
+      .then((d) => setData(Array.isArray(d) ? d : []))
+      .catch(() => setLoadError(true));
+  }, []);
+
+  const nextRound = useCallback(() => {
+    if (!data || data.length === 0) return;
+    const verb = data[Math.floor(Math.random() * data.length)];
+    const subject = SUBJECTS[Math.floor(Math.random() * SUBJECTS.length)];
+    const hour = Math.floor(Math.random() * 12) + 1;
+    const minute = (Math.floor(Math.random() * 11) + 1) * 5;
+    setRound({ verb, subject, hour, minute });
+    setTokens([]);
+    setResult(null);
+  }, [data]);
+
+  useEffect(() => { if (data) nextRound(); }, [data, nextRound]);
+
+  const addToken = (word) => {
+    if (result) return;
+    setTokens((t) => [...t, word]);
+  };
+
+  const removeToken = (idx) => {
+    if (result) return;
+    setTokens((t) => t.filter((_, i) => i !== idx));
+  };
+
+  const clearTokens = () => {
+    if (result) return;
+    setTokens([]);
+  };
+
+  const checkAnswer = () => {
+    if (!round || result || tokens.length === 0) return;
+    const phrase = tokens.join(" ");
+    const [targetA, targetB] = tagesablaufTargets(round.verb, round.subject, round.hour, round.minute);
+    const isCorrect = phrase === targetA || phrase === targetB;
+    const newStreak = isCorrect ? streak + 1 : 0;
+    setResult(isCorrect ? "correct" : "wrong");
+    setStreak(newStreak);
+    recordResult(isCorrect, newStreak);
+    setTimeout(nextRound, 2200);
+  };
+
+  if (loadError) {
+    return (
+      <div className="fade-in" style={{ paddingTop: 32 }}>
+        <ModuleHeader title="Tagesablauf" stats={stats} streak={streak} />
+        <div className="card" style={{ padding: 28 }}>
+          <p style={{ color: "var(--red)", fontWeight: 600, position: "relative" }}>
+            Couldn't load verb data. Check your connection and refresh.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data || !round) {
+    return (
+      <div className="fade-in" style={{ paddingTop: 32 }}>
+        <ModuleHeader title="Tagesablauf" stats={stats} streak={streak} />
+        <div className="card" style={{ padding: 28, textAlign: "center" }}>
+          <p style={{ color: "var(--ink2)", position: "relative" }}>Loading…</p>
+        </div>
+      </div>
+    );
+  }
+
+  const { verb, subject, hour, minute } = round;
+  const pool = buildTagesablaufPool(verb, hour, minute);
+  const [targetA, targetB] = tagesablaufTargets(verb, subject, hour, minute);
+  const slotClass = result === "correct"
+    ? "time-slot-correct"
+    : result === "wrong"
+      ? "time-slot-wrong"
+      : "";
+
+  return (
+    <div className="fade-in" style={{ paddingTop: 32 }}>
+      <ModuleHeader title="Tagesablauf" stats={stats} streak={streak} />
+
+      <div className="card" style={{ marginBottom: 16, padding: 20, display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <div style={{ position: "relative" }}>
+          <ClockFace hour={hour} minute={minute} />
+        </div>
+        <div style={{ position: "relative", marginTop: 12, textAlign: "center" }}>
+          <div style={{ fontSize: 13, color: "var(--ink2)", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}>
+            {FR_PRON[subject]} ({subject})
+          </div>
+          <div style={{ fontFamily: "'Lora', serif", fontSize: 22, fontWeight: 700, color: "var(--ink)", marginTop: 2 }}>
+            {verb.fr}
+          </div>
+        </div>
+        {result && (
+          <div className="fade-in" style={{ marginTop: 10, textAlign: "center", position: "relative" }}>
+            <div style={{ fontSize: 13, color: "var(--ink2)", fontWeight: 500 }}>
+              {formatDigital(hour, minute)}
+            </div>
+            <div style={{ fontSize: 15, color: result === "correct" ? "var(--green)" : "var(--red)", fontWeight: 600, marginTop: 2 }}>
+              {targetA}
+            </div>
+            <div style={{ fontSize: 13, color: "var(--ink2)", marginTop: 2, fontStyle: "italic" }}>
+              {targetB}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className={`time-slot ${slotClass}`}>
+        {tokens.length === 0 ? (
+          <span className="time-slot-empty">Tap words below to build the sentence</span>
+        ) : (
+          tokens.map((w, i) => (
+            <button
+              key={i}
+              className="time-token time-token-selected"
+              onClick={() => removeToken(i)}
+              disabled={result !== null}
+            >
+              {w}
+            </button>
+          ))
+        )}
+      </div>
+
+      <div className="time-pool">
+        {pool.map((w) => (
           <button
             key={w}
             className="time-token"
