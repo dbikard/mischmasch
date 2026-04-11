@@ -21,12 +21,12 @@
   <script type="text/babel">
 const { useState, useEffect, useCallback, useRef, useMemo } = React;
 
-const APP_VERSION = "1.4";
+const APP_VERSION = "1.5";
 const STORAGE_KEY = "vocab-de-fr";
 const CATEGORIES_KEY = "vocab-de-fr-categories";
 const FILTER_KEY = "vocab-de-fr-filter";
 const STREAK_KEY = "vocab-de-fr-streak";
-const TIME_STATS_KEY = "vocab-de-fr-time-stats";
+const MODULE_STATS_KEY = (id) => `vocab-de-fr-${id}-stats`;
 
 /* ── helpers ─────────────────────────────────────────────────── */
 function shuffle(a) {
@@ -181,10 +181,30 @@ function formatDigital(h, m) {
   return `${h}:${m.toString().padStart(2, "0")}`;
 }
 
-function loadTimeStats() {
-  try {
-    return JSON.parse(localStorage.getItem(TIME_STATS_KEY)) || { correct: 0, wrong: 0, bestStreak: 0 };
-  } catch { return { correct: 0, wrong: 0, bestStreak: 0 }; }
+/* ── module infrastructure ───────────────────────────────────── */
+// Shared persistence for practice modules (Uhrzeit and future additions).
+// Each module's progress is saved under `vocab-de-fr-<id>-stats`.
+// Storage shape: { correct, wrong, bestStreak }.
+const DEFAULT_MODULE_STATS = { correct: 0, wrong: 0, bestStreak: 0 };
+
+function useModuleStats(id) {
+  const key = MODULE_STATS_KEY(id);
+  const [stats, setStats] = useState(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(key));
+      return raw && typeof raw === "object" ? { ...DEFAULT_MODULE_STATS, ...raw } : { ...DEFAULT_MODULE_STATS };
+    } catch { return { ...DEFAULT_MODULE_STATS }; }
+  });
+  const record = useCallback((isCorrect, currentStreak = 0) => {
+    setStats((s) => {
+      const next = isCorrect
+        ? { ...s, correct: s.correct + 1, bestStreak: Math.max(s.bestStreak, currentStreak) }
+        : { ...s, wrong: s.wrong + 1 };
+      localStorage.setItem(key, JSON.stringify(next));
+      return next;
+    });
+  }, [key]);
+  return [stats, record];
 }
 
 /* ── styles ──────────────────────────────────────────────────── */
@@ -428,6 +448,33 @@ h2 { font-family: 'Lora', serif; font-size: 26px; font-weight: 700; }
 }
 `;
 
+/* ── shared module UI ────────────────────────────────────────── */
+// Header and footer shared across practice modules.
+// Pair with useModuleStats(id) for standard progress tracking.
+function ModuleHeader({ title, stats, streak }) {
+  const total = stats.correct + stats.wrong;
+  const accuracy = total > 0 ? Math.round((stats.correct / total) * 100) : 0;
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+      <h1>{title}</h1>
+      <div style={{ display: "flex", gap: 6 }}>
+        {total > 0 && <div className="streak-badge">{accuracy}%</div>}
+        {streak > 0 && <div className="streak-badge">{"\u{1F525}"} {streak}</div>}
+      </div>
+    </div>
+  );
+}
+
+function ModuleStatsFooter({ stats }) {
+  const total = stats.correct + stats.wrong;
+  if (total === 0) return null;
+  return (
+    <div style={{ marginTop: 16, fontSize: 12, color: "var(--ink2)", textAlign: "center" }}>
+      {stats.correct} correct · {stats.wrong} wrong · best streak {stats.bestStreak}
+    </div>
+  );
+}
+
 /* ── main component ──────────────────────────────────────────── */
 function VocabTrainer() {
   const [words, setWords] = useState([]);
@@ -509,6 +556,9 @@ function VocabTrainer() {
     </div>
   );
 
+  const activeModule = MODULES.find((m) => m.id === view);
+  const ActiveModuleComponent = activeModule?.component;
+
   return (
     <>
       <style>{CSS}</style>
@@ -516,13 +566,24 @@ function VocabTrainer() {
         {view === "home" && <HomeView words={words} categories={categories} setView={setView} />}
         {view === "add" && <AddView words={words} save={save} />}
         {view === "practice" && <PracticeView words={words} categories={categories} save={save} />}
-        {view === "time" && <TimeView />}
         {view === "stats" && <StatsView words={words} categories={categories} save={save} />}
+        {ActiveModuleComponent && <ActiveModuleComponent />}
       </div>
       <Nav view={view} setView={setView} />
     </>
   );
 }
+
+/* ── module registry ─────────────────────────────────────────── */
+// Practice modules are declared here. To add a new one:
+//   1. Write a component (see TimeView for the template).
+//   2. Use `useModuleStats('<id>')` for progress tracking.
+//   3. Wrap the view in <ModuleHeader> + <ModuleStatsFooter>.
+//   4. Append an entry to this array.
+// Nav entries and view routing are derived automatically.
+const MODULES = [
+  { id: "time", icon: "\u{1F552}", label: "Uhrzeit", component: TimeView },
+];
 
 /* ── nav ─────────────────────────────────────────────────────── */
 function Nav({ view, setView }) {
@@ -530,7 +591,7 @@ function Nav({ view, setView }) {
     { id: "home", icon: "\u{1F3E0}", label: "Home" },
     { id: "add", icon: "\u270F\uFE0F", label: "Add" },
     { id: "practice", icon: "\u{1F3B4}", label: "Practice" },
-    { id: "time", icon: "\u{1F552}", label: "Uhrzeit" },
+    ...MODULES.map(({ id, icon, label }) => ({ id, icon, label })),
     { id: "stats", icon: "\u{1F4CA}", label: "Stats" },
   ];
   return (
@@ -1390,7 +1451,7 @@ function TimeView() {
   const [tokens, setTokens] = useState([]);
   const [result, setResult] = useState(null);
   const [streak, setStreak] = useState(0);
-  const [stats, setStats] = useState(loadTimeStats);
+  const [stats, recordResult] = useModuleStats("time");
 
   const nextRound = useCallback(() => {
     const h = Math.floor(Math.random() * 12) + 1;
@@ -1421,22 +1482,15 @@ function TimeView() {
   const checkAnswer = () => {
     if (result || tokens.length === 0) return;
     const phrase = tokens.join(" ");
-    const correct = germanTime(hour, minute);
-    const isCorrect = phrase === correct;
-    setResult(isCorrect ? "correct" : "wrong");
+    const isCorrect = phrase === germanTime(hour, minute);
     const newStreak = isCorrect ? streak + 1 : 0;
+    setResult(isCorrect ? "correct" : "wrong");
     setStreak(newStreak);
-    const next = isCorrect
-      ? { ...stats, correct: stats.correct + 1, bestStreak: Math.max(stats.bestStreak, newStreak) }
-      : { ...stats, wrong: stats.wrong + 1 };
-    setStats(next);
-    localStorage.setItem(TIME_STATS_KEY, JSON.stringify(next));
+    recordResult(isCorrect, newStreak);
     setTimeout(nextRound, 1800);
   };
 
   const correctPhrase = germanTime(hour, minute);
-  const total = stats.correct + stats.wrong;
-  const accuracy = total > 0 ? Math.round((stats.correct / total) * 100) : 0;
   const slotClass = result === "correct"
     ? "time-slot-correct"
     : result === "wrong"
@@ -1445,17 +1499,7 @@ function TimeView() {
 
   return (
     <div className="fade-in" style={{ paddingTop: 32 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-        <h1>Uhrzeit</h1>
-        <div style={{ display: "flex", gap: 6 }}>
-          {total > 0 && (
-            <div className="streak-badge">{accuracy}%</div>
-          )}
-          {streak > 0 && (
-            <div className="streak-badge">{"\u{1F525}"} {streak}</div>
-          )}
-        </div>
-      </div>
+      <ModuleHeader title="Uhrzeit" stats={stats} streak={streak} />
 
       <div className="card" style={{ marginBottom: 16, padding: 20, display: "flex", flexDirection: "column", alignItems: "center" }}>
         <div style={{ position: "relative" }}>
@@ -1522,11 +1566,7 @@ function TimeView() {
         </button>
       </div>
 
-      {total > 0 && (
-        <div style={{ marginTop: 16, fontSize: 12, color: "var(--ink2)", textAlign: "center" }}>
-          {stats.correct} correct · {stats.wrong} wrong · best streak {stats.bestStreak}
-        </div>
-      )}
+      <ModuleStatsFooter stats={stats} />
     </div>
   );
 }
