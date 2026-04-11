@@ -18,10 +18,12 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
+  <script src="./modules/tagesablauf.js"></script>
+
   <script type="text/babel">
 const { useState, useEffect, useCallback, useRef, useMemo } = React;
 
-const APP_VERSION = "1.7";
+const APP_VERSION = "1.8";
 const STORAGE_KEY = "vocab-de-fr";
 const CATEGORIES_KEY = "vocab-de-fr-categories";
 const FILTER_KEY = "vocab-de-fr-filter";
@@ -1607,23 +1609,12 @@ function buildTagesablaufPool(verb, hour, minute) {
 }
 
 function TagesablaufView() {
-  const [data, setData] = useState(null);
-  const [loadError, setLoadError] = useState(false);
+  const data = typeof window !== "undefined" ? window.TAGESABLAUF_DATA : null;
   const [round, setRound] = useState(null);
   const [tokens, setTokens] = useState([]);
   const [result, setResult] = useState(null);
   const [streak, setStreak] = useState(0);
   const [stats, recordResult] = useModuleStats("tagesablauf");
-
-  useEffect(() => {
-    fetch('./modules/tagesablauf.json')
-      .then((r) => {
-        if (!r.ok) throw new Error('not ok');
-        return r.json();
-      })
-      .then((d) => setData(Array.isArray(d) ? d : []))
-      .catch(() => setLoadError(true));
-  }, []);
 
   const nextRound = useCallback(() => {
     if (!data || data.length === 0) return;
@@ -1636,7 +1627,7 @@ function TagesablaufView() {
     setResult(null);
   }, [data]);
 
-  useEffect(() => { if (data) nextRound(); }, [data, nextRound]);
+  useEffect(() => { nextRound(); }, [nextRound]);
 
   const addToken = (word) => {
     if (result) return;
@@ -1664,19 +1655,6 @@ function TagesablaufView() {
     recordResult(isCorrect, newStreak);
     setTimeout(nextRound, 2200);
   };
-
-  if (loadError) {
-    return (
-      <div className="fade-in" style={{ paddingTop: 32 }}>
-        <ModuleHeader title="Tagesablauf" stats={stats} streak={streak} />
-        <div className="card" style={{ padding: 28 }}>
-          <p style={{ color: "var(--red)", fontWeight: 600, position: "relative" }}>
-            Couldn't load verb data. Check your connection and refresh.
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   if (!data || !round) {
     return (
