@@ -951,7 +951,7 @@ function PracticeView({ words, categories, save }) {
     const isCorrect = alternatives.some((alt) => userInput === alt || normalizeText(userInput) === normalizeText(alt));
 
     // Check partial matches for fr>de when word has an article
-    let partialType = null; // "no-article" or "wrong-article"
+    let partialType = null; // "no-article", "wrong-article", or "capitalization"
     if (direction === "fr>de" && current.article) {
       if (isCorrect) {
         // Check if they typed just the word without article
@@ -966,6 +966,35 @@ function PracticeView({ words, categories, save }) {
           const typedWord = articleMatch[2].toLowerCase();
           const isWordCorrect = wordAlts.some((alt) => typedWord === alt || normalizeText(typedWord) === normalizeText(alt));
           if (isWordCorrect) partialType = "wrong-article";
+        }
+      }
+    }
+
+    // Check capitalization: warn if a word that should be capitalized wasn't (ignoring first char)
+    if (isCorrect && !partialType) {
+      const originalAlts = rawExpected.split("/").map((s) => s.trim());
+      if (direction === "fr>de" && current.article) {
+        rawExpected.split("/").forEach((s) => {
+          originalAlts.push(current.article + " " + s.trim());
+        });
+      }
+      const userOriginal = input.trim();
+      const matchedAlt = originalAlts.find((alt) =>
+        userOriginal.toLowerCase() === alt.toLowerCase() || normalizeText(userOriginal) === normalizeText(alt)
+      );
+      if (matchedAlt) {
+        const userWords = userOriginal.split(/\s+/);
+        const expectedWords = matchedAlt.split(/\s+/);
+        for (let i = 0; i < Math.min(userWords.length, expectedWords.length); i++) {
+          // Skip first character of the entire answer (sentence-start capitalization doesn't matter)
+          if (i === 0) {
+            if (userWords[i].slice(1) !== expectedWords[i].slice(1) &&
+                userWords[i].slice(1).toLowerCase() === expectedWords[i].slice(1).toLowerCase()) {
+              partialType = "capitalization";
+            }
+          } else if (userWords[i] !== expectedWords[i] && userWords[i].toLowerCase() === expectedWords[i].toLowerCase()) {
+            partialType = "capitalization";
+          }
         }
       }
     }
@@ -994,6 +1023,13 @@ function PracticeView({ words, categories, save }) {
       setSessionCount((c) => c + 1);
       updateWord(current, "correct", 0.5);
       updateWord(current, "genderWrong", 1);
+      setTimeout(nextCard, 1500);
+    } else if (partialType === "capitalization") {
+      setResult("partial");
+      setPartialReason("Watch the capitalization!");
+      setCorrectAnswer(displayExpected);
+      setSessionCount((c) => c + 1);
+      updateWord(current, "correct", 0.5);
       setTimeout(nextCard, 1500);
     } else {
       setResult("wrong");
