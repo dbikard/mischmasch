@@ -922,7 +922,7 @@ function PracticeView({ words, categories, save }) {
     save(next);
   }, [words, save]);
 
-  const normalizeText = (s) => s.toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss").replace(/[éèê]/g, "e").replace(/[àâ]/g, "a").replace(/[ùû]/g, "u").replace(/[ôò]/g, "o").replace(/[îï]/g, "i").replace(/ç/g, "c").replace(/œ/g, "oe").replace(/'/g, "'");
+  const normalizeText = (s) => s.toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss").replace(/[éèê]/g, "e").replace(/[àâ]/g, "a").replace(/[ùû]/g, "u").replace(/[ôò]/g, "o").replace(/[îï]/g, "i").replace(/ç/g, "c").replace(/œ/g, "oe").replace(/'/g, "'").replace(/-/g, " ");
 
   const handleTypeSubmit = () => {
     if (!input.trim() || result) return;
