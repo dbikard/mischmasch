@@ -936,30 +936,44 @@ function PracticeView({ words, categories, save }) {
 
   const normalizeText = (s) => s.toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss").replace(/[éèê]/g, "e").replace(/[àâ]/g, "a").replace(/[ùû]/g, "u").replace(/[ôò]/g, "o").replace(/[îï]/g, "i").replace(/ç/g, "c").replace(/œ/g, "oe").replace(/'/g, "'").replace(/-/g, " ");
 
+  // "/" with whitespace separates alternative answers ("le collier / la chaîne").
+  // "/" without whitespace marks a German separable-verb split ("fern/sehen") —
+  // accept both the as-written form and the joined form ("fernsehen").
+  const splitAlternatives = (s) => {
+    const out = [];
+    s.split(/(?<=\s)\/|\/(?=\s)/).forEach((part) => {
+      const trimmed = part.trim();
+      if (!trimmed) return;
+      out.push(trimmed);
+      if (trimmed.includes("/")) out.push(trimmed.replace(/\//g, ""));
+    });
+    return out;
+  };
+
   const handleTypeSubmit = () => {
     if (!input.trim() || result) return;
     const rawExpected = direction === "de>fr" ? current.fr : current.de;
     const displayExpected = direction === "fr>de" && current.article
       ? current.article + " " + current.de
       : rawExpected;
-    const alternatives = rawExpected.split("/").map((s) => s.trim().toLowerCase());
+    const alternatives = splitAlternatives(rawExpected).map((s) => s.toLowerCase());
     // Also accept "article + word" when translating to German
     if (direction === "fr>de" && current.article) {
-      rawExpected.split("/").forEach((s) => {
-        alternatives.push((current.article + " " + s.trim()).toLowerCase());
+      splitAlternatives(rawExpected).forEach((s) => {
+        alternatives.push((current.article + " " + s).toLowerCase());
       });
     }
     // Also accept answers without French article when translating to French
     if (direction === "de>fr") {
-      rawExpected.split("/").forEach((s) => {
-        const stripped = s.trim().replace(/^(les?|la|l'|un|une|des)\s+/i, "");
-        if (stripped.toLowerCase() !== s.trim().toLowerCase()) {
+      splitAlternatives(rawExpected).forEach((s) => {
+        const stripped = s.replace(/^(les?|la|l'|un|une|des)\s+/i, "");
+        if (stripped.toLowerCase() !== s.toLowerCase()) {
           alternatives.push(stripped.toLowerCase());
         }
       });
     }
     const userInput = input.trim().toLowerCase();
-    const wordAlts = rawExpected.split("/").map((s) => s.trim().toLowerCase());
+    const wordAlts = splitAlternatives(rawExpected).map((s) => s.toLowerCase());
     const isCorrect = alternatives.some((alt) => userInput === alt || normalizeText(userInput) === normalizeText(alt));
 
     // Check partial matches for fr>de when word has an article
@@ -984,10 +998,10 @@ function PracticeView({ words, categories, save }) {
 
     // Check capitalization: warn if a word that should be capitalized wasn't (ignoring first char)
     if (isCorrect && !partialType) {
-      const originalAlts = rawExpected.split("/").map((s) => s.trim());
+      const originalAlts = splitAlternatives(rawExpected);
       if (direction === "fr>de" && current.article) {
-        rawExpected.split("/").forEach((s) => {
-          originalAlts.push(current.article + " " + s.trim());
+        splitAlternatives(rawExpected).forEach((s) => {
+          originalAlts.push(current.article + " " + s);
         });
       }
       const userOriginal = input.trim();
