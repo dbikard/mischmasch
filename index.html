@@ -1674,15 +1674,16 @@ function tagesablaufRound(verb, subject, hour, minute, template) {
   const verbForm = verb[subject];
   const tail = [verb.complement, verb.particle].filter(Boolean).join(" ");
   const tailPart = tail ? " " + tail : "";
+  const reflexivePart = verb.reflexive ? " " + verb.reflexive[subject] : "";
   if (template === "A") {
     return {
       starter: "Um",
-      target: `Um ${timePhrase} ${verbForm} ${subject}${tailPart}`,
+      target: `Um ${timePhrase} ${verbForm} ${subject}${reflexivePart}${tailPart}`,
     };
   }
   return {
     starter: capFirst(subject),
-    target: `${capFirst(subject)} ${verbForm} um ${timePhrase}${tailPart}`,
+    target: `${capFirst(subject)} ${verbForm}${reflexivePart} um ${timePhrase}${tailPart}`,
   };
 }
 
@@ -1719,9 +1720,13 @@ function buildTagesablaufPool(verb, hour, minute, subject, template) {
     ? SUBJECTS.map((s) => verb.particle + verb[s])
     : [];
   const verbChoices = shuffle([...conjugations, ...traps]);
+  const reflexives = verb.reflexive
+    ? [...new Set(SUBJECTS.map((s) => verb.reflexive[s]))]
+    : [];
   return [...new Set([
     ...timeOptions,
     ...verbChoices,
+    ...reflexives,
     ...tailTokens,
     ...extras,
   ])];

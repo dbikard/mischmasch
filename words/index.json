@@ -10,5 +10,6 @@
   { "id": "klassenzimmer", "name": "Klassenzimmer", "file": "klassenzimmer.tsv" },
   { "id": "maeppchen", "name": "Mäppchen", "file": "maeppchen.tsv" },
   { "id": "meinungen", "name": "Meinungen", "file": "meinungen.tsv" },
-  { "id": "verben", "name": "Verben", "file": "verben.tsv" }
+  { "id": "verben", "name": "Verben", "file": "verben.tsv" },
+  { "id": "tageszeiten", "name": "Tageszeiten", "file": "tageszeiten.tsv" }
 ]
