@@ -4,6 +4,9 @@
 // particle = separable prefix that drops to the very end of the clause
 // in a main clause ("auf", "an", "fern"). Empty when the verb is not
 // separable.
+// reflexive = optional per-subject pronoun for reflexive verbs
+// (mich/dich/sich/sich/uns). Placed right after the subject pronoun.
+// Omit for non-reflexive verbs.
 window.TAGESABLAUF_DATA = [
   {
     inf: "auf/stehen",
@@ -103,5 +106,50 @@ window.TAGESABLAUF_DATA = [
     er: "geht",
     sie: "geht",
     wir: "gehen",
+  },
+  {
+    inf: "sich an/ziehen",
+    fr: "s'habiller",
+    complement: "",
+    particle: "an",
+    reflexive: { ich: "mich", du: "dich", er: "sich", sie: "sich", wir: "uns" },
+    ich: "ziehe",
+    du: "ziehst",
+    er: "zieht",
+    sie: "zieht",
+    wir: "ziehen",
+  },
+  {
+    inf: "duschen",
+    fr: "se doucher",
+    complement: "",
+    particle: "",
+    ich: "dusche",
+    du: "duschst",
+    er: "duscht",
+    sie: "duscht",
+    wir: "duschen",
+  },
+  {
+    inf: "Zähne putzen",
+    fr: "se laver les dents",
+    complement: "die Zähne",
+    particle: "",
+    ich: "putze",
+    du: "putzt",
+    er: "putzt",
+    sie: "putzt",
+    wir: "putzen",
+  },
+  {
+    inf: "Schultasche packen",
+    fr: "faire son cartable",
+    complement: "die Schultasche",
+    particle: "",
+    ich: "packe",
+    du: "packst",
+    er: "packt",
+    sie: "packt",
+    wir: "packen",
   },
 ];
