@@ -41,6 +41,14 @@ function shuffle(a) {
   return b;
 }
 
+// Returns the correct value plus up to N random distractors from `all`,
+// shuffled. Caps the group size so pool builders can keep distractor
+// counts predictable.
+function pickWithDistractors(correct, all, count) {
+  const others = all.filter((x) => x !== correct);
+  return shuffle([correct, ...shuffle(others).slice(0, count)]);
+}
+
 function parseTable(text, category) {
   return text
     .trim()
@@ -1791,25 +1799,26 @@ function buildTagesablaufPool(round) {
   // since the focus is sentence structure, not phrase composition. The
   // complement stays as one chunk, but the separable particle is always
   // its own token so the learner places it at the very end of the clause.
-  // For moment rounds, all six moment-nouns are shown so the learner
-  // has to identify which fits the visual cue.
+  // Each form-group only exposes a handful of distractors so the pool
+  // stays a structure exercise, not a search task.
   const { verb, subject, template, kind } = round;
-  const conjugations = [...new Set(SUBJECTS.map((s) => verb[s]))];
+  const allConjugations = [...new Set(SUBJECTS.map((s) => verb[s]))];
+  const conjugations = pickWithDistractors(verb[subject], allConjugations, 2);
   const tailTokens = [];
   if (verb.complement) tailTokens.push(verb.complement);
   if (verb.particle) tailTokens.push(verb.particle);
-  // Trap: for separable verbs, put the joined-prefix conjugations in the
-  // pool ("anrufe", "aufstehe", "fernsehe"...). Picking one means
-  // forgetting to split the particle off in a main clause.
+  // Trap: for separable verbs, slip a couple of joined-prefix
+  // conjugations into the pool ("anrufe", "aufstehe"...). Picking one
+  // means forgetting to split the particle off in a main clause.
   const traps = verb.particle
-    ? SUBJECTS.map((s) => verb.particle + verb[s])
+    ? shuffle(SUBJECTS.map((s) => verb.particle + verb[s])).slice(0, 2)
     : [];
   const verbChoices = shuffle([...conjugations, ...traps]);
   const reflexives = verb.reflexive
-    ? [...new Set(SUBJECTS.map((s) => verb.reflexive[s]))]
+    ? pickWithDistractors(verb.reflexive[subject], [...new Set(SUBJECTS.map((s) => verb.reflexive[s]))], 2)
     : [];
   if (kind === "moment") {
-    const nouns = MOMENTS.map((m) => m.noun);
+    const nouns = pickWithDistractors(round.moment.noun, MOMENTS.map((m) => m.noun), 3);
     const prepOptions = template === "B" ? ["am", "in"] : [];
     const extras = template === "A" ? [subject] : [];
     return [...new Set([
