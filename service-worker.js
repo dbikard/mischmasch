@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mischmasch-v22';
+const CACHE_NAME = 'mischmasch-v23';
 const ASSETS = [
   './',
   './index.html',
@@ -19,6 +19,10 @@ const ASSETS = [
   './words/meinungen.tsv',
   './words/verben.tsv',
   './words/tageszeiten.tsv',
+  './words/wochentage.tsv',
+  './words/jahreszeiten.tsv',
+  './words/monate.tsv',
+  './words/in-der-klasse.tsv',
   './modules/tagesablauf.js',
 ];
 
