@@ -1,3 +1,12 @@
+/* Akkusativ — accusative-article drill (data + view).
+   Self-contained module registered via window.MischMasch. */
+(() => {
+  const { useState, useEffect, useCallback } = React;
+  const {
+    register, useModuleStats, ModuleHeader, ModuleStatsFooter,
+    shuffle, capFirst, SUBJECTS, FR_PRON,
+  } = window.MischMasch;
+
 // Akkusativ (COD ⇒ accusatif) drill data.
 //
 // The learner builds "Subjekt + Verb + Artikel + Nomen" and must pick the
@@ -52,3 +61,125 @@ window.AKKUSATIV_DATA = {
     { de: "Freunde", g: "pl", fr: "les amis", verbs: ["treffen", "haben", "sehen", "suchen"] },
   ],
 };
+
+// Nominative → accusative article forms. Only the masculine column
+// changes; everything else is identical to the nominative.
+const AKK_DEF = { m: "den", f: "die", n: "das", pl: "die" };
+const AKK_INDEF = { m: "einen", f: "eine", n: "ein" };
+const NOM_ART = { m: "der", f: "die", n: "das", pl: "die" };
+
+function akkusativRound(data) {
+  const noun = data.nouns[Math.floor(Math.random() * data.nouns.length)];
+  const verbInf = noun.verbs[Math.floor(Math.random() * noun.verbs.length)];
+  const verb = data.verbs[verbInf];
+  const subject = SUBJECTS[Math.floor(Math.random() * SUBJECTS.length)];
+  // Plural has no indefinite article, so those rounds are always definite.
+  const definite = noun.g === "pl" ? true : Math.random() < 0.5;
+  const correct = definite ? AKK_DEF[noun.g] : AKK_INDEF[noun.g];
+  const options = definite
+    ? shuffle(["den", "die", "das"])
+    : shuffle(["einen", "eine", "ein"]);
+  return { noun, verb, verbInf, subject, definite, correct, options };
+}
+
+function AkkusativView() {
+  const data = typeof window !== "undefined" ? window.AKKUSATIV_DATA : null;
+  const [round, setRound] = useState(null);
+  const [picked, setPicked] = useState(null);
+  const [streak, setStreak] = useState(0);
+  const [stats, recordResult] = useModuleStats("akkusativ");
+
+  const nextRound = useCallback(() => {
+    if (!data) return;
+    setRound(akkusativRound(data));
+    setPicked(null);
+  }, [data]);
+
+  useEffect(() => { nextRound(); }, [nextRound]);
+
+  const choose = (opt) => {
+    if (picked || !round) return;
+    const isCorrect = opt === round.correct;
+    const newStreak = isCorrect ? streak + 1 : 0;
+    setPicked(opt);
+    setStreak(newStreak);
+    recordResult(isCorrect, newStreak);
+  };
+
+  if (!data || !round) {
+    return (
+      <div className="fade-in" style={{ paddingTop: 32 }}>
+        <ModuleHeader title="Akkusativ" stats={stats} streak={streak} />
+        <div className="card" style={{ padding: 28, textAlign: "center" }}>
+          <p style={{ color: "var(--ink2)", position: "relative" }}>Loading…</p>
+        </div>
+      </div>
+    );
+  }
+
+  const { noun, verb, subject, definite, correct, options } = round;
+  const genderTag = { m: "masculin", f: "féminin", n: "neutre", pl: "pluriel" }[noun.g];
+  const nomArticle = NOM_ART[noun.g];
+  const changes = noun.g === "m"; // only the masculine article changes
+
+  return (
+    <div className="fade-in" style={{ paddingTop: 32 }}>
+      <ModuleHeader title="Akkusativ" stats={stats} streak={streak} />
+
+      <div className="card" style={{ marginBottom: 16, padding: 24, textAlign: "center" }}>
+        <div style={{ fontSize: 13, color: "var(--ink2)", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600, position: "relative" }}>
+          {FR_PRON[subject]} · {verb.fr} · {noun.fr}
+        </div>
+        <div style={{ fontFamily: "'Lora', serif", fontSize: 26, fontWeight: 700, color: "var(--ink)", marginTop: 12, position: "relative", lineHeight: 1.35 }}>
+          {capFirst(subject)} {verb[subject]}{" "}
+          <span style={{ color: picked ? (picked === correct ? "var(--green)" : "var(--red)") : "var(--accent)", borderBottom: "2px solid currentColor", padding: "0 4px", minWidth: 44, display: "inline-block" }}>
+            {picked || "?"}
+          </span>{" "}
+          {noun.de}.
+        </div>
+        <div style={{ fontSize: 12, color: "var(--ink2)", marginTop: 10, position: "relative" }}>
+          {nomArticle} {noun.de} · {genderTag} · {definite ? "défini" : "indéfini"}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+        {options.map((opt) => {
+          let cls = "choice-btn";
+          if (picked) {
+            if (opt === correct) cls += " choice-correct";
+            else if (opt === picked) cls += " choice-wrong";
+          }
+          return (
+            <button key={opt} className={cls} onClick={() => choose(opt)} disabled={picked !== null}>
+              {opt}
+            </button>
+          );
+        })}
+      </div>
+
+      {picked && (
+        <div className="fade-in card" style={{ padding: 18, marginBottom: 16, textAlign: "center" }}>
+          <div style={{ fontFamily: "'Lora', serif", fontSize: 20, fontWeight: 700, color: "var(--green)", position: "relative" }}>
+            {capFirst(subject)} {verb[subject]} {correct} {noun.de}.
+          </div>
+          <div style={{ fontSize: 13, color: "var(--ink2)", marginTop: 8, position: "relative" }}>
+            {changes
+              ? `${genderTag} : ${nomArticle} → ${correct} (seul le masculin change !)`
+              : `${genderTag} : ${nomArticle} → ${correct} (pas de changement)`}
+          </div>
+        </div>
+      )}
+
+      {picked && (
+        <button className="btn btn-primary" onClick={nextRound}>
+          Next {"→"}
+        </button>
+      )}
+
+      <ModuleStatsFooter stats={stats} />
+    </div>
+  );
+}
+
+  register({ id: "akkusativ", icon: "\u{1F3AF}", label: "Akkusativ", component: AkkusativView });
+})();
