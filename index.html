@@ -28,7 +28,7 @@ const { useState, useEffect, useCallback, useRef, useMemo } = React;
 window.MischMasch = { modules: [] };
 window.MischMasch.register = function (m) { window.MischMasch.modules.push(m); };
 
-const APP_VERSION = "2.7";
+const APP_VERSION = "2.8";
 const STORAGE_KEY = "vocab-de-fr";
 const CATEGORIES_KEY = "vocab-de-fr-categories";
 const FILTER_KEY = "vocab-de-fr-filter";
@@ -469,6 +469,16 @@ input[type="text"]:focus { border-color: var(--accent); }
 }
 .cat-chip.active { border-color: var(--accent); background: #fef5f2; color: var(--accent); }
 
+.filter-toggle {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; padding: 9px 14px; border-radius: 10px;
+  border: 1px solid var(--warm); background: var(--card);
+  font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600;
+  color: var(--ink2); cursor: pointer; transition: all 0.15s;
+}
+.filter-toggle:active { border-color: var(--accent); }
+.filter-toggle .filter-caret { color: var(--accent); font-size: 11px; }
+
 h1 { font-family: 'Lora', serif; font-size: 32px; font-weight: 700; }
 h2 { font-family: 'Lora', serif; font-size: 26px; font-weight: 700; }
 
@@ -622,7 +632,14 @@ function VocabTrainer() {
       <div className="app">
         {view === "home" && <HomeView words={words} categories={categories} setView={setView} />}
         {view === "add" && <AddView words={words} save={save} />}
-        {view === "practice" && <PracticeView words={words} categories={categories} save={save} />}
+        {view === "practice" && (
+          <div style={{ paddingTop: 20 }}>
+            <button className="back-btn" onClick={() => setView("modules")}>
+              {"←"} Übungen
+            </button>
+            <PracticeView words={words} categories={categories} save={save} />
+          </div>
+        )}
         {view === "modules" && <ModulesView setView={setView} />}
         {view === "stats" && <StatsView words={words} categories={categories} save={save} />}
         {ActiveModuleComponent && (
@@ -653,15 +670,14 @@ function VocabTrainer() {
 const MODULES = window.MischMasch.modules;
 
 /* ── nav ─────────────────────────────────────────────────────── */
-// Fixed primary sections only. Grammar modules live in the "Übungen"
-// hub (see ModulesView) so the bar stays a constant four items no
-// matter how many modules the registry grows to.
+// Fixed primary sections only. Every exercise — the vocabulary drill and
+// the grammar modules alike — lives in the "Übungen" hub (see ModulesView),
+// so the bar stays a constant three items however many the hub grows to.
 function Nav({ view, setView }) {
-  const inModule = MODULES.some((m) => m.id === view);
+  const inExercise = view === "practice" || MODULES.some((m) => m.id === view);
   const items = [
     { id: "home", icon: "\u{1F3E0}", label: "Home", match: view === "add" },
-    { id: "practice", icon: "\u{1F3B4}", label: "Practice" },
-    { id: "modules", icon: "\u{1F4DA}", label: "\u00DCbungen", match: inModule },
+    { id: "modules", icon: "\u{1F4DA}", label: "\u00DCbungen", match: inExercise },
     { id: "stats", icon: "\u{1F4CA}", label: "Stats" },
   ];
   return (
@@ -686,18 +702,22 @@ function Nav({ view, setView }) {
 }
 
 /* ── modules hub (Übungen) ───────────────────────────────────── */
-// Auto-generated launcher grid. Every entry in the MODULES registry
-// appears here as a card — adding a module needs no change to the nav
-// or to this component.
+// Launcher grid. The vocabulary drill is the first card; every entry in
+// the MODULES registry follows automatically — adding a grammar module
+// needs no change to the nav or to this component.
 function ModulesView({ setView }) {
+  const cards = [
+    { id: "practice", icon: "\u{1F3B4}", label: "Vocabeln" },
+    ...MODULES,
+  ];
   return (
     <div className="fade-in" style={{ paddingTop: 32 }}>
       <h1 style={{ marginBottom: 6 }}>Übungen</h1>
       <p style={{ color: "var(--ink2)", fontSize: 14, fontWeight: 500, marginBottom: 20 }}>
-        Grammatik & Struktur üben
+        Wortschatz, Grammatik & Struktur üben
       </p>
       <div className="module-grid">
-        {MODULES.map((m) => (
+        {cards.map((m) => (
           <button key={m.id} className="module-card" onClick={() => setView(m.id)} aria-label={m.label}>
             <span className="module-card-icon" aria-hidden="true">{m.icon}</span>
             <span className="module-card-label">{m.label}</span>
@@ -923,6 +943,7 @@ function PracticeView({ words, categories, save }) {
   const [choiceStates, setChoiceStates] = useState({});
   const [streak, setStreak] = useState(0);
   const [sessionCount, setSessionCount] = useState(0);
+  const [showFilters, setShowFilters] = useState(false);
   const inputRef = useRef(null);
   const streakUpdated = useRef(false);
 
@@ -1189,8 +1210,8 @@ function PracticeView({ words, categories, save }) {
 
   if (words.length === 0) {
     return (
-      <div className="fade-in" style={{ paddingTop: 40, textAlign: "center" }}>
-        <h1 style={{ marginBottom: 16 }}>Practice</h1>
+      <div className="fade-in" style={{ paddingTop: 8, textAlign: "center" }}>
+        <h1 style={{ marginBottom: 16 }}>Vocabeln</h1>
         <div className="card" style={{ padding: 32 }}>
           <div style={{ fontSize: 40, marginBottom: 8, position: "relative" }}>{"\u{1F4DD}"}</div>
           <p style={{ color: "var(--ink2)", fontSize: 15, position: "relative" }}>Add some words first to start practicing!</p>
@@ -1199,10 +1220,12 @@ function PracticeView({ words, categories, save }) {
     );
   }
 
+  const activeCount = allActive ? availableCategories.length : activeCategories.size;
+
   return (
-    <div className="fade-in" style={{ paddingTop: 32 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-        <h1>Practice</h1>
+    <div className="fade-in" style={{ paddingTop: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <h1>Vocabeln</h1>
         {sessionCount > 0 && (
           <div className="streak-badge">
             {"\u{1F525}"} {streak}
@@ -1210,29 +1233,14 @@ function PracticeView({ words, categories, save }) {
         )}
       </div>
 
-      {availableCategories.length > 1 && (
-        <div className="cat-chips" style={{ marginBottom: 12 }}>
-          <button className={`cat-chip ${allActive ? "active" : ""}`} onClick={setAll}>All</button>
-          {availableCategories.map((c) => (
-            <button
-              key={c.id}
-              className={`cat-chip ${!allActive && activeCategories.has(c.id) ? "active" : ""}`}
-              onClick={() => toggleCategory(c.id)}
-            >
-              {c.name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="mode-tabs" style={{ marginBottom: 12 }}>
+      <div className="mode-tabs" style={{ marginBottom: 8 }}>
         <button className={`mode-tab ${mode === "type" ? "active" : ""}`} onClick={() => setMode("type")}>Type</button>
         <button className={`mode-tab ${mode === "choice" ? "active" : ""}`} onClick={() => setMode("choice")}>Choice</button>
         <button className={`mode-tab ${mode === "gender" ? "active" : ""}`} onClick={() => setMode("gender")}>der/die/das</button>
       </div>
 
       {mode !== "gender" && (
-        <div className="mode-tabs" style={{ marginBottom: 20 }}>
+        <div className="mode-tabs" style={{ marginBottom: 8 }}>
           <button
             className={`mode-tab ${directionMode === "de>fr" ? "active" : ""}`}
             onClick={() => changeDirectionMode("de>fr")}
@@ -1251,6 +1259,35 @@ function PracticeView({ words, categories, save }) {
           >
             Both
           </button>
+        </div>
+      )}
+
+      {availableCategories.length > 1 && (
+        <div style={{ marginBottom: 20 }}>
+          <button
+            className="filter-toggle"
+            onClick={() => setShowFilters((v) => !v)}
+            aria-expanded={showFilters}
+          >
+            <span>
+              {"\u{1F4C2}"} {allActive ? "Alle Kategorien" : `${activeCount} von ${availableCategories.length} Kategorien`}
+            </span>
+            <span className="filter-caret" aria-hidden="true">{showFilters ? "▴" : "▾"}</span>
+          </button>
+          {showFilters && (
+            <div className="cat-chips fade-in" style={{ marginTop: 8 }}>
+              <button className={`cat-chip ${allActive ? "active" : ""}`} onClick={setAll}>Alle</button>
+              {availableCategories.map((c) => (
+                <button
+                  key={c.id}
+                  className={`cat-chip ${!allActive && activeCategories.has(c.id) ? "active" : ""}`}
+                  onClick={() => toggleCategory(c.id)}
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
