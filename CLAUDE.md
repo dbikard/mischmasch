@@ -42,6 +42,24 @@ MischMasch is a German-French vocabulary flashcard PWA deployed on GitHub Pages.
 No core UI changes are needed — the Übungen hub card, nav highlighting, and
 routing all derive from the registry.
 
+### Joining Auto-Mode (optional)
+
+Add an `sr` object to the `register(...)` call to opt a module into the
+unified spaced-repetition Auto-Modus:
+
+```
+register({ id, icon, label, component, sr: {
+  items: () => ["<id>:foo", "<id>:bar"],     // schedulable skill ids
+  generateRound: (itemId) => ({ kind, ... }) // a declarative round spec
+}})
+```
+
+`generateRound` returns a spec of `kind` `"typed"`, `"choice"`, or `"tokens"`
+(see the presenters in `index.html`). The core scheduler (`srOverdue`, due-date
+Leitner) picks the most-overdue item across all modules + vocabulary, records
+per-item stats under `vocab-de-fr-sr`, and renders the spec. Modules stay pure
+— no persistence or scheduling of their own.
+
 ## Development
 
 Open `index.html` directly in a browser or serve with `python3 -m http.server`.

@@ -190,5 +190,40 @@ function ModalverbenView() {
   );
 }
 
-  register({ id: "modalverben", icon: "\u{1F6A6}", label: "Modalverben", component: ModalverbenView });
+  // Auto-Mode: one item per (modal × affirmative/negative) — the two
+  // skills being drilled (conjugation + kein/nicht choice).
+  function modalverbenRoundFor(modalKey, negative) {
+    const data = window.MODALVERBEN_DATA;
+    const modal = data.modals[modalKey];
+    const subject = SUBJECTS[Math.floor(Math.random() * SUBJECTS.length)];
+    const activity = data.activities[Math.floor(Math.random() * data.activities.length)];
+    const tail = negative ? activity.neg : activity.aff;
+    const round = { modalKey, modal, subject, activity, negative, tail };
+    const target = [capFirst(subject), modal[subject], ...tail].join(" ");
+    return {
+      kind: "tokens",
+      badge: negative ? "✗ négatif" : "✓ affirmatif",
+      badgeNeg: negative,
+      cue: `${FR_PRON[subject]} (${subject}) · ${modal.fr}`,
+      prompt: (negative ? "ne pas " : "") + activity.fr,
+      starter: capFirst(subject),
+      pool: buildModalverbenPool(round, data),
+      target,
+    };
+  }
+
+  register({
+    id: "modalverben", icon: "\u{1F6A6}", label: "Modalverben", component: ModalverbenView,
+    sr: {
+      items: () => {
+        const out = [];
+        Object.keys(window.MODALVERBEN_DATA.modals).forEach((k) => { out.push("modal:" + k + ":aff", "modal:" + k + ":neg"); });
+        return out;
+      },
+      generateRound: (id) => {
+        const [, modalKey, kind] = id.split(":");
+        return modalverbenRoundFor(modalKey, kind === "neg");
+      },
+    },
+  });
 })();

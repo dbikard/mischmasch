@@ -500,5 +500,41 @@ function TagesablaufView() {
   );
 }
 
-  register({ id: "tagesablauf", icon: "\u{1F305}", label: "Alltag", component: TagesablaufView });
+  // Auto-Mode: one schedulable item per verb; subject / template /
+  // moment-or-time stay random within the item.
+  function tagesablaufRoundFor(inf) {
+    const verb = window.TAGESABLAUF_DATA.find((v) => v.inf === inf);
+    const subject = SUBJECTS[Math.floor(Math.random() * SUBJECTS.length)];
+    const template = Math.random() < 0.5 ? "A" : "B";
+    let round;
+    if (Math.random() < 2 / 3) {
+      const moment = MOMENTS[Math.floor(Math.random() * MOMENTS.length)];
+      round = { kind: "moment", verb, subject, moment, template };
+    } else {
+      const hour = Math.floor(Math.random() * 12) + 1;
+      const minute = (Math.floor(Math.random() * 11) + 1) * 5;
+      round = { kind: "time", verb, subject, hour, minute, template };
+    }
+    const { starter, target } = tagesablaufRound(round);
+    const visual = round.kind === "moment"
+      ? <MomentFace moment={round.moment} />
+      : <ClockFace hour={round.hour} minute={round.minute} />;
+    return {
+      kind: "tokens",
+      visual,
+      cue: `${FR_PRON[subject]} (${subject})`,
+      prompt: verb.fr,
+      starter,
+      pool: buildTagesablaufPool(round),
+      target,
+    };
+  }
+
+  register({
+    id: "tagesablauf", icon: "\u{1F305}", label: "Alltag", component: TagesablaufView,
+    sr: {
+      items: () => window.TAGESABLAUF_DATA.map((v) => "tages:" + v.inf),
+      generateRound: (id) => tagesablaufRoundFor(id.slice("tages:".length)),
+    },
+  });
 })();

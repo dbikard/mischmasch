@@ -181,5 +181,33 @@ function AkkusativView() {
   );
 }
 
-  register({ id: "akkusativ", icon: "\u{1F3AF}", label: "Akkusativ", component: AkkusativView });
+  // Auto-Mode: one schedulable item per gender (the skill being drilled).
+  const AKK_GENDER_TAG = { m: "masculin", f: "féminin", n: "neutre", pl: "pluriel" };
+  function akkusativRoundForGender(g) {
+    const data = window.AKKUSATIV_DATA;
+    const nouns = data.nouns.filter((n) => n.g === g);
+    const noun = nouns[Math.floor(Math.random() * nouns.length)];
+    const verbInf = noun.verbs[Math.floor(Math.random() * noun.verbs.length)];
+    const verb = data.verbs[verbInf];
+    const subject = SUBJECTS[Math.floor(Math.random() * SUBJECTS.length)];
+    const definite = g === "pl" ? true : Math.random() < 0.5;
+    const correct = definite ? AKK_DEF[g] : AKK_INDEF[g];
+    const options = shuffle(definite ? ["den", "die", "das"] : ["einen", "eine", "ein"]);
+    return {
+      kind: "choice",
+      cue: `${FR_PRON[subject]} · ${verb.fr} · ${noun.fr}`,
+      pre: `${capFirst(subject)} ${verb[subject]}`,
+      post: `${noun.de}.`,
+      options, correct,
+      explanation: `${AKK_GENDER_TAG[g]} : ${NOM_ART[g]} → ${correct}` + (g === "m" ? " (seul le masculin change !)" : " (pas de changement)"),
+    };
+  }
+
+  register({
+    id: "akkusativ", icon: "\u{1F3AF}", label: "Akkusativ", component: AkkusativView,
+    sr: {
+      items: () => ["m", "f", "n", "pl"].map((g) => "akk:" + g),
+      generateRound: (id) => akkusativRoundForGender(id.split(":")[1]),
+    },
+  });
 })();

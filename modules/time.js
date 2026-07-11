@@ -141,5 +141,34 @@ function TimeView() {
   );
 }
 
-  register({ id: "time", icon: "\u{1F552}", label: "Uhrzeit", component: TimeView });
+  // Auto-Mode: one schedulable item per phrase pattern (the structural
+  // skill), so "viertel vor" spaces independently of "halb".
+  const TIME_CLASS_MIN = {
+    "nach": [5, 10, 20],
+    "viertel-nach": [15],
+    "vor-halb": [25],
+    "halb": [30],
+    "nach-halb": [35],
+    "viertel-vor": [45],
+    "vor": [40, 50, 55],
+  };
+  function timeRoundFor(cls) {
+    const mins = TIME_CLASS_MIN[cls] || [30];
+    const minute = mins[Math.floor(Math.random() * mins.length)];
+    const hour = Math.floor(Math.random() * 12) + 1;
+    return {
+      kind: "tokens",
+      visual: <ClockFace hour={hour} minute={minute} />,
+      pool: TIME_WORD_POOL,
+      target: germanTime(hour, minute),
+    };
+  }
+
+  register({
+    id: "time", icon: "\u{1F552}", label: "Uhrzeit", component: TimeView,
+    sr: {
+      items: () => Object.keys(TIME_CLASS_MIN).map((c) => "time:" + c),
+      generateRound: (id) => timeRoundFor(id.slice("time:".length)),
+    },
+  });
 })();

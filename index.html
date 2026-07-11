@@ -28,7 +28,7 @@ const { useState, useEffect, useCallback, useRef, useMemo } = React;
 window.MischMasch = { modules: [] };
 window.MischMasch.register = function (m) { window.MischMasch.modules.push(m); };
 
-const APP_VERSION = "2.8";
+const APP_VERSION = "2.9";
 const STORAGE_KEY = "vocab-de-fr";
 const CATEGORIES_KEY = "vocab-de-fr-categories";
 const FILTER_KEY = "vocab-de-fr-filter";
@@ -202,6 +202,73 @@ function formatDigital(h, m) {
 const SUBJECTS = ["ich", "du", "er", "sie", "wir"];
 const FR_PRON = { ich: "je", du: "tu", er: "il", sie: "elle", wir: "nous" };
 function capFirst(s) { return s[0].toUpperCase() + s.slice(1); }
+
+/* ── unified spaced-repetition scheduler ─────────────────────── */
+// One due-date primitive shared by Auto-Mode across every exercise.
+// An "item" is any schedulable skill (a word's translation, a word's
+// gender, a grammar micro-skill). Its record is { correct, wrong,
+// lastPracticed }; level comes from net = correct − wrong (same buckets
+// as getLevel), and each level maps to a review interval.
+const SR_KEY = "vocab-de-fr-sr";
+const SR_INTERVALS_MS = [
+  10 * 60 * 1000,        // 0 Struggling → 10 min
+  24 * 3600 * 1000,      // 1 New        → 1 day
+  3 * 24 * 3600 * 1000,  // 2 Learning   → 3 days
+  7 * 24 * 3600 * 1000,  // 3 Mastered   → 7 days
+];
+function srLevel(rec) {
+  const net = (rec.correct || 0) - (rec.wrong || 0);
+  if (net >= 4) return 3;
+  if (net >= 1) return 2;
+  if (net >= 0) return 1;
+  return 0;
+}
+function srDueAt(rec) {
+  return (rec.lastPracticed || 0) + SR_INTERVALS_MS[srLevel(rec)];
+}
+function srOverdue(rec, now) {
+  return now - srDueAt(rec);
+}
+
+// Per-item store for grammar modules (vocab keeps its stats on the word).
+function loadSRStore() {
+  try { return JSON.parse(localStorage.getItem(SR_KEY)) || {}; } catch { return {}; }
+}
+function srGet(store, id) {
+  return store[id] || { correct: 0, wrong: 0, lastPracticed: 0 };
+}
+function recordSRItem(id, isCorrect) {
+  const store = loadSRStore();
+  const r = srGet(store, id);
+  store[id] = {
+    correct: r.correct + (isCorrect ? 1 : 0),
+    wrong: r.wrong + (isCorrect ? 0 : 1),
+    lastPracticed: Date.now(),
+  };
+  localStorage.setItem(SR_KEY, JSON.stringify(store));
+}
+
+// Accent/diacritic-insensitive comparison for typed vocab answers.
+function srNormalize(s) {
+  return s.toLowerCase()
+    .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
+    .replace(/[éèê]/g, "e").replace(/[àâ]/g, "a").replace(/[ùû]/g, "u")
+    .replace(/[ôò]/g, "o").replace(/[îï]/g, "i").replace(/ç/g, "c").replace(/œ/g, "oe")
+    .replace(/'/g, "'").replace(/-/g, " ");
+}
+// True if `input` matches `expected` (which may hold "/"-separated
+// variants), tolerating a leading French/German article on either side.
+function vocabAnswerMatches(input, expected) {
+  const strip = (s) => s.trim().toLowerCase().replace(/^(les?|la|l'|un|une|des|der|die|das)\s+/i, "");
+  const user = input.trim().toLowerCase();
+  const userS = strip(input);
+  const alts = new Set();
+  expected.split("/").map((s) => s.trim().toLowerCase()).forEach((s) => { alts.add(s); alts.add(strip(s)); });
+  for (const a of alts) {
+    if (user === a || userS === a || srNormalize(user) === srNormalize(a) || srNormalize(userS) === srNormalize(a)) return true;
+  }
+  return false;
+}
 
 /* ── module infrastructure ───────────────────────────────────── */
 // Shared persistence for practice modules (Uhrzeit and future additions).
@@ -641,6 +708,14 @@ function VocabTrainer() {
           </div>
         )}
         {view === "modules" && <ModulesView setView={setView} />}
+        {view === "auto" && (
+          <div style={{ paddingTop: 20 }}>
+            <button className="back-btn" onClick={() => setView("home")}>
+              {"←"} Home
+            </button>
+            <AutoModeView words={words} save={save} />
+          </div>
+        )}
         {view === "stats" && <StatsView words={words} categories={categories} save={save} />}
         {ActiveModuleComponent && (
           <div style={{ paddingTop: 20 }}>
@@ -676,7 +751,7 @@ const MODULES = window.MischMasch.modules;
 function Nav({ view, setView }) {
   const inExercise = view === "practice" || MODULES.some((m) => m.id === view);
   const items = [
-    { id: "home", icon: "\u{1F3E0}", label: "Home", match: view === "add" },
+    { id: "home", icon: "\u{1F3E0}", label: "Home", match: view === "add" || view === "auto" },
     { id: "modules", icon: "\u{1F4DA}", label: "\u00DCbungen", match: inExercise },
     { id: "stats", icon: "\u{1F4CA}", label: "Stats" },
   ];
@@ -724,6 +799,285 @@ function ModulesView({ setView }) {
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+/* ── auto-mode: generic round presenters ─────────────────────── */
+// Three declarative round kinds cover every exercise. Each renders one
+// round from a `spec`, shows feedback, and calls onResult(bool) when the
+// learner taps "Weiter". They own no scheduling — the player advances.
+
+function ChoiceRound({ spec, onResult }) {
+  const [picked, setPicked] = useState(null);
+  const done = picked !== null;
+  return (
+    <div className="fade-in">
+      <div className="card" style={{ marginBottom: 16, padding: 24, textAlign: "center" }}>
+        {spec.visual && <div style={{ position: "relative", display: "flex", justifyContent: "center" }}>{spec.visual}</div>}
+        {spec.cue && <div className="card-hint" style={{ marginTop: spec.visual ? 10 : 0, marginBottom: spec.word ? 12 : 10, position: "relative" }}>{spec.cue}</div>}
+        {spec.word ? (
+          <div className="card-word">{spec.word}</div>
+        ) : (
+          <div style={{ fontFamily: "'Lora', serif", fontSize: 24, fontWeight: 700, lineHeight: 1.35, position: "relative" }}>
+            {spec.pre}{" "}
+            <span style={{ color: done ? (picked === spec.correct ? "var(--green)" : "var(--red)") : "var(--accent)", borderBottom: "2px solid currentColor", padding: "0 4px", minWidth: 44, display: "inline-block" }}>{picked || "?"}</span>{" "}
+            {spec.post}
+          </div>
+        )}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+        {spec.options.map((opt) => {
+          let cls = "choice-btn";
+          if (done) { if (opt === spec.correct) cls += " choice-correct"; else if (opt === picked) cls += " choice-wrong"; }
+          return (
+            <button key={opt} className={cls} style={{ textAlign: "center" }} onClick={() => !done && setPicked(opt)} disabled={done}>
+              {opt}
+            </button>
+          );
+        })}
+      </div>
+      {done && spec.explanation && (
+        <div className="fade-in card" style={{ padding: 16, marginBottom: 16, textAlign: "center" }}>
+          <div style={{ fontSize: 13, color: "var(--ink2)", position: "relative" }}>{spec.explanation}</div>
+        </div>
+      )}
+      {done && <button className="btn btn-primary" onClick={() => onResult(picked === spec.correct)}>Weiter {"→"}</button>}
+    </div>
+  );
+}
+
+function TypedRound({ spec, onResult }) {
+  const [input, setInput] = useState("");
+  const [done, setDone] = useState(null); // "correct" | "wrong"
+  const ref = useRef(null);
+  useEffect(() => { const t = setTimeout(() => ref.current?.focus(), 50); return () => clearTimeout(t); }, []);
+  const check = () => {
+    if (done || !input.trim()) return;
+    setDone(vocabAnswerMatches(input, spec.expected) ? "correct" : "wrong");
+  };
+  return (
+    <div className="fade-in">
+      <div className="card" style={{ marginBottom: 16, minHeight: 120, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+        <div className="card-hint" style={{ marginBottom: 12, position: "relative" }}>{spec.cue}</div>
+        <div className="card-word">{spec.prompt}</div>
+      </div>
+      <input
+        ref={ref} type="text" value={input} onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && (done ? onResult(done === "correct") : check())}
+        placeholder={spec.placeholder} disabled={!!done} autoFocus
+      />
+      {done === "wrong" && (
+        <div className="fade-in" style={{ marginTop: 12, padding: 14, borderRadius: 12, background: "#fdecea", textAlign: "center" }}>
+          <div style={{ fontSize: 13, color: "var(--red)", fontWeight: 600, marginBottom: 4 }}>Richtige Antwort:</div>
+          <div style={{ fontFamily: "'Lora', serif", fontSize: 24, color: "var(--ink)" }}>{spec.display}</div>
+        </div>
+      )}
+      {done === "correct" && (
+        <div className="fade-in" style={{ marginTop: 12, padding: 14, borderRadius: 12, background: "#e8f8f0", textAlign: "center", color: "var(--green)", fontWeight: 700, fontFamily: "'Lora', serif", fontSize: 22 }}>
+          {"✓"} {spec.display}
+        </div>
+      )}
+      <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+        {done ? (
+          <button className="btn btn-primary" onClick={() => onResult(done === "correct")}>Weiter {"→"}</button>
+        ) : (
+          <>
+            <button className="btn btn-outline btn-small" onClick={() => setDone("wrong")}>Show answer</button>
+            <button className="btn btn-primary" style={{ flex: 1 }} onClick={check} disabled={!input.trim()}>Check</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TokensRound({ spec, onResult }) {
+  const [tokens, setTokens] = useState([]);
+  const [result, setResult] = useState(null);
+  const add = (w) => { if (!result) setTokens((t) => [...t, w]); };
+  const removeAt = (i) => { if (!result) setTokens((t) => t.filter((_, j) => j !== i)); };
+  const clear = () => { if (!result) setTokens([]); };
+  const check = () => {
+    if (result || tokens.length === 0) return;
+    const phrase = [spec.starter, ...tokens].filter(Boolean).join(" ");
+    setResult(phrase === spec.target ? "correct" : "wrong");
+  };
+  const slotClass = result === "correct" ? "time-slot-correct" : result === "wrong" ? "time-slot-wrong" : "";
+  return (
+    <div className="fade-in">
+      <div className="card" style={{ marginBottom: 16, padding: 20, display: "flex", flexDirection: "column", alignItems: "center" }}>
+        {spec.badge && (
+          <div style={{ position: "relative", display: "inline-block", padding: "4px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase", color: spec.badgeNeg ? "var(--red)" : "var(--green)", background: spec.badgeNeg ? "#fdecea" : "#e8f8f0", marginBottom: 8 }}>{spec.badge}</div>
+        )}
+        {spec.visual && <div style={{ position: "relative" }}>{spec.visual}</div>}
+        {spec.cue && <div style={{ fontSize: 13, color: "var(--ink2)", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600, marginTop: spec.visual ? 12 : 0, position: "relative", textAlign: "center" }}>{spec.cue}</div>}
+        {spec.prompt && <div style={{ fontFamily: "'Lora', serif", fontSize: 22, fontWeight: 700, color: "var(--ink)", marginTop: 4, position: "relative", textAlign: "center" }}>{spec.prompt}</div>}
+        {result && <div className="fade-in" style={{ marginTop: 10, position: "relative", textAlign: "center", fontSize: 15, fontWeight: 600, color: result === "correct" ? "var(--green)" : "var(--red)" }}>{spec.target}</div>}
+      </div>
+      <div className={`time-slot ${slotClass}`}>
+        {spec.starter && <span className="time-token time-token-locked">{spec.starter}</span>}
+        {tokens.length === 0 && !spec.starter ? (
+          <span className="time-slot-empty">Tap words below to build the phrase</span>
+        ) : (
+          tokens.map((w, i) => (
+            <button key={i} className="time-token time-token-selected" onClick={() => removeAt(i)} disabled={result !== null}>{w}</button>
+          ))
+        )}
+      </div>
+      <div className="time-pool">
+        {spec.pool.map((w, i) => (
+          <button key={w + i} className="time-token" onClick={() => add(w)} disabled={result !== null}>{w}</button>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 10 }}>
+        {result ? (
+          <button className="btn btn-primary" onClick={() => onResult(result === "correct")} style={{ flex: 1 }}>Weiter {"→"}</button>
+        ) : (
+          <>
+            <button className="btn btn-outline" onClick={clear} disabled={tokens.length === 0} style={{ flex: 1 }}>Clear</button>
+            <button className="btn btn-primary" onClick={check} disabled={tokens.length === 0} style={{ flex: 2 }}>Check</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── auto-mode: exercise sources + scheduler ─────────────────── */
+// Vocabulary is a built-in source; each grammar module contributes one
+// via its `sr` interface. A source exposes: items(), recOf(id) → SR
+// record, generateRound(id) → spec, record(id, ok) → persist.
+function autoVocabSource(words, save, directionMode) {
+  const byId = {};
+  words.forEach((w) => {
+    const k = wordKey(w);
+    byId["v:t:" + k] = { word: w, kind: "t" };
+    if (w.article) byId["v:g:" + k] = { word: w, kind: "g" };
+  });
+  return {
+    id: "vocab", label: "Vocabeln", icon: "\u{1F3B4}",
+    items: () => Object.keys(byId),
+    recOf: (id) => {
+      const { word, kind } = byId[id];
+      return kind === "g"
+        ? { correct: word.genderCorrect || 0, wrong: word.genderWrong || 0, lastPracticed: word.lastPracticed || 0 }
+        : { correct: word.correct || 0, wrong: word.wrong || 0, lastPracticed: word.lastPracticed || 0 };
+    },
+    generateRound: (id) => {
+      const { word, kind } = byId[id];
+      if (kind === "g") {
+        return { kind: "choice", word: word.de, cue: "Welcher Artikel?", options: ["der", "die", "das"], correct: word.article };
+      }
+      const dir = directionMode === "both" ? (Math.random() < 0.5 ? "de>fr" : "fr>de") : directionMode;
+      if (dir === "de>fr") {
+        return { kind: "typed", cue: "Deutsch → Français", prompt: `${word.article ? word.article + " " : ""}${word.de}`, expected: word.fr, display: word.fr, placeholder: "Type in French..." };
+      }
+      return { kind: "typed", cue: "Français → Deutsch", prompt: word.fr, expected: word.de, display: `${word.article ? word.article + " " : ""}${word.de}`, placeholder: "Type in German..." };
+    },
+    record: (id, ok) => {
+      const { word, kind } = byId[id];
+      const field = ok ? (kind === "g" ? "genderCorrect" : "correct") : (kind === "g" ? "genderWrong" : "wrong");
+      save(words.map((w) => (w.de === word.de && w.fr === word.fr) ? { ...w, [field]: (w[field] || 0) + 1, lastPracticed: Date.now() } : w));
+    },
+  };
+}
+function autoModuleSource(m) {
+  return {
+    id: m.id, label: m.label, icon: m.icon,
+    items: () => m.sr.items(),
+    recOf: (id) => srGet(loadSRStore(), id),
+    generateRound: (id) => m.sr.generateRound(id),
+    record: (id, ok) => recordSRItem(id, ok),
+  };
+}
+
+/* ── auto-mode player ─────────────────────────────────────────── */
+function AutoModeView({ words, save }) {
+  const directionMode = (() => {
+    const s = localStorage.getItem(DIRECTION_KEY);
+    return s === "de>fr" || s === "fr>de" || s === "both" ? s : "both";
+  })();
+  const sources = useMemo(() => {
+    const list = [autoVocabSource(words, save, directionMode)];
+    MODULES.forEach((m) => { if (m.sr) list.push(autoModuleSource(m)); });
+    return list;
+  }, [words, directionMode]);
+  const sourcesRef = useRef(sources);
+  sourcesRef.current = sources;
+
+  const [pick, setPick] = useState(null);
+  const [streak, setStreak] = useState(0);
+  const [count, setCount] = useState(0);
+  const historyRef = useRef({ types: [], items: [] });
+
+  const pickNext = useCallback(() => {
+    const srcs = sourcesRef.current;
+    const now = Date.now();
+    const cands = [];
+    srcs.forEach((s) => s.items().forEach((id) => cands.push({ srcId: s.id, itemId: id, overdue: srOverdue(s.recOf(id), now) })));
+    if (cands.length === 0) { setPick(null); return; }
+    // Shuffle first, then stable-sort by overdue — so the many equally
+    // overdue never-seen items (esp. at cold start) are ordered randomly
+    // instead of always favouring the first source/item in array order.
+    shuffle(cands).forEach((c, i) => { c._i = i; });
+    cands.sort((a, b) => (b.overdue - a.overdue) || (a._i - b._i));
+    const h = historyRef.current;
+    const lastType = h.types[h.types.length - 1];
+    const twoSame = h.types.length >= 2 && h.types[h.types.length - 1] === h.types[h.types.length - 2];
+    const recent = new Set(h.items.slice(-5));
+    const chosen =
+      cands.find((c) => !(twoSame && c.srcId === lastType) && !recent.has(c.itemId)) ||
+      cands.find((c) => !recent.has(c.itemId)) ||
+      cands[0];
+    const src = srcs.find((s) => s.id === chosen.srcId);
+    let spec = null;
+    try { spec = src.generateRound(chosen.itemId); } catch (e) { spec = null; }
+    h.types.push(chosen.srcId); h.items.push(chosen.itemId);
+    if (h.types.length > 20) h.types.shift();
+    if (h.items.length > 20) h.items.shift();
+    if (!spec) { setPick(null); return; }
+    setPick({ srcId: src.id, itemId: chosen.itemId, spec, srcLabel: src.label, srcIcon: src.icon });
+  }, []);
+
+  useEffect(() => { pickNext(); }, [pickNext]);
+
+  const onResult = (ok) => {
+    const src = sourcesRef.current.find((s) => s.id === pick.srcId);
+    if (src) src.record(pick.itemId, ok);
+    setStreak((s) => (ok ? s + 1 : 0));
+    setCount((c) => c + 1);
+    pickNext();
+  };
+
+  if (!pick) {
+    return (
+      <div className="fade-in" style={{ paddingTop: 8 }}>
+        <h1 style={{ marginBottom: 16 }}>Auto-Modus</h1>
+        <div className="card" style={{ padding: 32, textAlign: "center" }}>
+          <div style={{ fontSize: 40, marginBottom: 8, position: "relative" }}>{"\u{1F9E9}"}</div>
+          <p style={{ color: "var(--ink2)", fontSize: 15, position: "relative" }}>Nichts zu üben — füge zuerst ein paar Wörter hinzu.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const P = pick.spec.kind === "typed" ? TypedRound : pick.spec.kind === "choice" ? ChoiceRound : TokensRound;
+  return (
+    <div className="fade-in" style={{ paddingTop: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <h1>Auto-Modus</h1>
+        <div style={{ display: "flex", gap: 6 }}>
+          {count > 0 && <div className="streak-badge">{count}</div>}
+          {streak > 0 && <div className="streak-badge">{"\u{1F525}"} {streak}</div>}
+        </div>
+      </div>
+      <div style={{ marginBottom: 14 }}>
+        <span className="streak-badge" aria-label={pick.srcLabel}>
+          <span aria-hidden="true">{pick.srcIcon}</span> {pick.srcLabel}
+        </span>
+      </div>
+      <P key={count} spec={pick.spec} onResult={onResult} />
     </div>
   );
 }
@@ -782,15 +1136,18 @@ function HomeView({ words, categories, setView }) {
 
       {words.length === 0 ? (
         <button className="btn btn-primary" onClick={() => setView("add")}>
-          Add your first words
+          Erste Wörter hinzufügen
         </button>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <button className="btn btn-primary" onClick={() => setView("practice")}>
-            Start practicing
+          <button className="btn btn-primary" onClick={() => setView("auto")}>
+            {"⚡"} Auto-Modus
+          </button>
+          <button className="btn btn-secondary" onClick={() => setView("modules")}>
+            Übung wählen
           </button>
           <button className="btn btn-secondary" onClick={() => setView("add")}>
-            Add more words
+            Wörter hinzufügen
           </button>
         </div>
       )}
