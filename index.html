@@ -20,11 +20,12 @@
 
   <script src="./modules/tagesablauf.js"></script>
   <script src="./modules/akkusativ.js"></script>
+  <script src="./modules/modalverben.js"></script>
 
   <script type="text/babel">
 const { useState, useEffect, useCallback, useRef, useMemo } = React;
 
-const APP_VERSION = "2.4";
+const APP_VERSION = "2.5";
 const STORAGE_KEY = "vocab-de-fr";
 const CATEGORIES_KEY = "vocab-de-fr-categories";
 const FILTER_KEY = "vocab-de-fr-filter";
@@ -609,6 +610,7 @@ const MODULES = [
   { id: "time", icon: "\u{1F552}", label: "Uhrzeit", component: TimeView },
   { id: "tagesablauf", icon: "\u{1F305}", label: "Alltag", component: TagesablaufView },
   { id: "akkusativ", icon: "\u{1F3AF}", label: "Akkusativ", component: AkkusativView },
+  { id: "modalverben", icon: "\u{1F6A6}", label: "Modalverben", component: ModalverbenView },
 ];
 
 /* ── nav ─────────────────────────────────────────────────────── */
@@ -2123,6 +2125,144 @@ function AkkusativView() {
           Next {"→"}
         </button>
       )}
+
+      <ModuleStatsFooter stats={stats} />
+    </div>
+  );
+}
+
+/* ── modalverben view ────────────────────────────────────────── */
+// Sentence builder: conjugate the modal, keep the main verb at the end,
+// and choose the right negation (kein-/nicht) for negative rounds.
+const NEG_WORDS = ["nicht", "kein", "keine", "keinen"];
+
+function modalverbenRound(data) {
+  const modalKeys = Object.keys(data.modals);
+  const modalKey = modalKeys[Math.floor(Math.random() * modalKeys.length)];
+  const modal = data.modals[modalKey];
+  const subject = SUBJECTS[Math.floor(Math.random() * SUBJECTS.length)];
+  const activity = data.activities[Math.floor(Math.random() * data.activities.length)];
+  const negative = Math.random() < 0.5;
+  const tail = negative ? activity.neg : activity.aff;
+  const target = [capFirst(subject), modal[subject], ...tail].join(" ");
+  return { modalKey, modal, subject, activity, negative, tail, target };
+}
+
+function buildModalverbenPool(round, data) {
+  const { modal, subject, tail } = round;
+  // Two wrong conjugations of the same modal as traps.
+  const modalForms = [...new Set(SUBJECTS.map((s) => modal[s]))];
+  const modalTraps = shuffle(modalForms.filter((f) => f !== modal[subject])).slice(0, 2);
+  // Negation traps: the negation words NOT used in this target (so a kein
+  // round offers "nicht" and the other kein forms, and vice versa).
+  const negInTarget = tail.filter((t) => NEG_WORDS.includes(t));
+  const negTraps = shuffle(NEG_WORDS.filter((w) => !negInTarget.includes(w))).slice(0, 2);
+  return shuffle([...new Set([modal[subject], ...modalTraps, ...tail, ...negTraps])]);
+}
+
+function ModalverbenView() {
+  const data = typeof window !== "undefined" ? window.MODALVERBEN_DATA : null;
+  const [round, setRound] = useState(null);
+  const [tokens, setTokens] = useState([]);
+  const [result, setResult] = useState(null);
+  const [streak, setStreak] = useState(0);
+  const [stats, recordResult] = useModuleStats("modalverben");
+
+  const nextRound = useCallback(() => {
+    if (!data) return;
+    setRound(modalverbenRound(data));
+    setTokens([]);
+    setResult(null);
+  }, [data]);
+
+  useEffect(() => { nextRound(); }, [nextRound]);
+
+  const addToken = (w) => { if (!result) setTokens((t) => [...t, w]); };
+  const removeToken = (idx) => { if (!result) setTokens((t) => t.filter((_, i) => i !== idx)); };
+  const clearTokens = () => { if (!result) setTokens([]); };
+
+  const checkAnswer = () => {
+    if (!round || result || tokens.length === 0) return;
+    const phrase = [capFirst(round.subject), ...tokens].join(" ");
+    const isCorrect = phrase === round.target;
+    const newStreak = isCorrect ? streak + 1 : 0;
+    setResult(isCorrect ? "correct" : "wrong");
+    setStreak(newStreak);
+    recordResult(isCorrect, newStreak);
+  };
+
+  if (!data || !round) {
+    return (
+      <div className="fade-in" style={{ paddingTop: 32 }}>
+        <ModuleHeader title="Modalverben" stats={stats} streak={streak} />
+        <div className="card" style={{ padding: 28, textAlign: "center" }}>
+          <p style={{ color: "var(--ink2)", position: "relative" }}>Loading…</p>
+        </div>
+      </div>
+    );
+  }
+
+  const { modal, subject, activity, negative, target } = round;
+  const pool = buildModalverbenPool(round, data);
+  const starter = capFirst(subject);
+  const slotClass = result === "correct" ? "time-slot-correct" : result === "wrong" ? "time-slot-wrong" : "";
+
+  return (
+    <div className="fade-in" style={{ paddingTop: 32 }}>
+      <ModuleHeader title="Modalverben" stats={stats} streak={streak} />
+
+      <div className="card" style={{ marginBottom: 16, padding: 22, textAlign: "center" }}>
+        <div style={{ position: "relative", display: "inline-block", padding: "4px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase", color: negative ? "var(--red)" : "var(--green)", background: negative ? "#fdecea" : "#e8f8f0" }}>
+          {negative ? "✗ négatif" : "✓ affirmatif"}
+        </div>
+        <div style={{ fontSize: 13, color: "var(--ink2)", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600, marginTop: 12, position: "relative" }}>
+          {FR_PRON[subject]} ({subject}) · {modal.fr}
+        </div>
+        <div style={{ fontFamily: "'Lora', serif", fontSize: 24, fontWeight: 700, color: "var(--ink)", marginTop: 4, position: "relative" }}>
+          {negative ? "ne pas " : ""}{activity.fr}
+        </div>
+        {result && (
+          <div className="fade-in" style={{ marginTop: 10, position: "relative" }}>
+            <div style={{ fontSize: 16, color: result === "correct" ? "var(--green)" : "var(--red)", fontWeight: 600 }}>
+              {target}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className={`time-slot ${slotClass}`}>
+        <span className="time-token time-token-locked">{starter}</span>
+        {tokens.map((w, i) => (
+          <button key={i} className="time-token time-token-selected" onClick={() => removeToken(i)} disabled={result !== null}>
+            {w}
+          </button>
+        ))}
+      </div>
+
+      <div className="time-pool">
+        {pool.map((w) => (
+          <button key={w} className="time-token" onClick={() => addToken(w)} disabled={result !== null}>
+            {w}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", gap: 10 }}>
+        {result ? (
+          <button className="btn btn-primary" onClick={nextRound} style={{ flex: 1 }}>
+            Next {"→"}
+          </button>
+        ) : (
+          <>
+            <button className="btn btn-outline" onClick={clearTokens} disabled={tokens.length === 0} style={{ flex: 1 }}>
+              Clear
+            </button>
+            <button className="btn btn-primary" onClick={checkAnswer} disabled={tokens.length === 0} style={{ flex: 2 }}>
+              Check
+            </button>
+          </>
+        )}
+      </div>
 
       <ModuleStatsFooter stats={stats} />
     </div>
