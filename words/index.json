@@ -15,5 +15,6 @@
   { "id": "wochentage", "name": "Meine Woche", "file": "wochentage.tsv" },
   { "id": "jahreszeiten", "name": "Meine Jahreszeiten", "file": "jahreszeiten.tsv" },
   { "id": "monate", "name": "Mein Jahr", "file": "monate.tsv" },
-  { "id": "in-der-klasse", "name": "In der Klasse", "file": "in-der-klasse.tsv" }
+  { "id": "in-der-klasse", "name": "In der Klasse", "file": "in-der-klasse.tsv" },
+  { "id": "essen-trinken", "name": "Essen und Trinken", "file": "essen-trinken.tsv" }
 ]
