@@ -25,7 +25,7 @@
   <script type="text/babel">
 const { useState, useEffect, useCallback, useRef, useMemo } = React;
 
-const APP_VERSION = "2.5";
+const APP_VERSION = "2.6";
 const STORAGE_KEY = "vocab-de-fr";
 const CATEGORIES_KEY = "vocab-de-fr-categories";
 const FILTER_KEY = "vocab-de-fr-filter";
@@ -471,6 +471,29 @@ h2 { font-family: 'Lora', serif; font-size: 26px; font-weight: 700; }
   background: var(--card); border-radius: 20px; padding: 28px 24px;
   max-width: 340px; width: 100%; box-shadow: 0 8px 40px rgba(0,0,0,0.15);
 }
+
+.module-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+}
+.module-card {
+  background: var(--card); border-radius: 16px; box-shadow: var(--shadow);
+  border: 1px solid rgba(44,36,22,0.06);
+  padding: 22px 14px; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
+  display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;
+}
+.module-card:active { transform: scale(0.97); }
+.module-card-icon { font-size: 38px; line-height: 1; }
+.module-card-label {
+  font-family: 'Lora', serif; font-size: 18px; font-weight: 700; color: var(--ink);
+}
+
+.back-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: none; border: none; cursor: pointer;
+  font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600;
+  color: var(--ink2); padding: 4px 0; margin-bottom: 4px;
+}
+.back-btn:active { color: var(--accent); }
 `;
 
 /* ── shared module UI ────────────────────────────────────────── */
@@ -591,8 +614,16 @@ function VocabTrainer() {
         {view === "home" && <HomeView words={words} categories={categories} setView={setView} />}
         {view === "add" && <AddView words={words} save={save} />}
         {view === "practice" && <PracticeView words={words} categories={categories} save={save} />}
+        {view === "modules" && <ModulesView setView={setView} />}
         {view === "stats" && <StatsView words={words} categories={categories} save={save} />}
-        {ActiveModuleComponent && <ActiveModuleComponent />}
+        {ActiveModuleComponent && (
+          <div style={{ paddingTop: 20 }}>
+            <button className="back-btn" onClick={() => setView("modules")}>
+              {"←"} Übungen
+            </button>
+            <ActiveModuleComponent />
+          </div>
+        )}
       </div>
       <Nav view={view} setView={setView} />
     </>
@@ -604,8 +635,12 @@ function VocabTrainer() {
 //   1. Write a component (see TimeView for the template).
 //   2. Use `useModuleStats('<id>')` for progress tracking.
 //   3. Wrap the view in <ModuleHeader> + <ModuleStatsFooter>.
-//   4. Append an entry to this array.
-// Nav entries and view routing are derived automatically.
+//   4. Append an entry to this array (id, icon, label, component).
+//   5. If the module loads a `modules/<id>.js` data file, add its
+//      <script> tag in <head> and list it in service-worker.js ASSETS
+//      (then bump CACHE_NAME so clients pick it up).
+// The Übungen hub card, nav highlighting, and view routing are all
+// derived from this array automatically — no other UI code to touch.
 const MODULES = [
   { id: "time", icon: "\u{1F552}", label: "Uhrzeit", component: TimeView },
   { id: "tagesablauf", icon: "\u{1F305}", label: "Alltag", component: TagesablaufView },
@@ -614,22 +649,57 @@ const MODULES = [
 ];
 
 /* ── nav ─────────────────────────────────────────────────────── */
+// Fixed primary sections only. Grammar modules live in the "Übungen"
+// hub (see ModulesView) so the bar stays a constant four items no
+// matter how many modules the registry grows to.
 function Nav({ view, setView }) {
+  const inModule = MODULES.some((m) => m.id === view);
   const items = [
-    { id: "home", icon: "\u{1F3E0}", label: "Home" },
-    { id: "add", icon: "\u270F\uFE0F", label: "Add" },
+    { id: "home", icon: "\u{1F3E0}", label: "Home", match: view === "add" },
     { id: "practice", icon: "\u{1F3B4}", label: "Practice" },
-    ...MODULES.map(({ id, icon, label }) => ({ id, icon, label })),
+    { id: "modules", icon: "\u{1F4DA}", label: "\u00DCbungen", match: inModule },
     { id: "stats", icon: "\u{1F4CA}", label: "Stats" },
   ];
   return (
-    <div className="nav">
-      {items.map((it) => (
-        <button key={it.id} className={view === it.id ? "active" : ""} onClick={() => setView(it.id)}>
-          <span className="nav-icon">{it.icon}</span>
-          {it.label}
-        </button>
-      ))}
+    <nav className="nav" aria-label="Main">
+      {items.map((it) => {
+        const active = view === it.id || it.match;
+        return (
+          <button
+            key={it.id}
+            className={active ? "active" : ""}
+            aria-current={active ? "page" : undefined}
+            aria-label={it.label}
+            onClick={() => setView(it.id)}
+          >
+            <span className="nav-icon" aria-hidden="true">{it.icon}</span>
+            {it.label}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+/* ── modules hub (Übungen) ───────────────────────────────────── */
+// Auto-generated launcher grid. Every entry in the MODULES registry
+// appears here as a card — adding a module needs no change to the nav
+// or to this component.
+function ModulesView({ setView }) {
+  return (
+    <div className="fade-in" style={{ paddingTop: 32 }}>
+      <h1 style={{ marginBottom: 6 }}>Übungen</h1>
+      <p style={{ color: "var(--ink2)", fontSize: 14, fontWeight: 500, marginBottom: 20 }}>
+        Grammatik & Struktur üben
+      </p>
+      <div className="module-grid">
+        {MODULES.map((m) => (
+          <button key={m.id} className="module-card" onClick={() => setView(m.id)} aria-label={m.label}>
+            <span className="module-card-icon" aria-hidden="true">{m.icon}</span>
+            <span className="module-card-label">{m.label}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
