@@ -4,7 +4,7 @@
   const { useState, useEffect, useCallback } = React;
   const {
     register, useModuleStats, ModuleHeader, ModuleStatsFooter,
-    shuffle, capFirst, SUBJECTS, FR_PRON,
+    shuffle, capFirst, SUBJECTS, FR_PRON, recordSRItem,
   } = window.MischMasch;
 
 // Akkusativ (COD ⇒ accusatif) drill data.
@@ -104,6 +104,7 @@ function AkkusativView() {
     setPicked(opt);
     setStreak(newStreak);
     recordResult(isCorrect, newStreak);
+    recordSRItem("akk:" + round.noun.g, isCorrect);
   };
 
   if (!data || !round) {

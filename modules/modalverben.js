@@ -4,7 +4,7 @@
   const { useState, useEffect, useCallback } = React;
   const {
     register, useModuleStats, ModuleHeader, ModuleStatsFooter,
-    shuffle, capFirst, SUBJECTS, FR_PRON,
+    shuffle, capFirst, SUBJECTS, FR_PRON, recordSRItem,
   } = window.MischMasch;
 
 // Modalverben drill data (dürfen / müssen / können).
@@ -110,6 +110,7 @@ function ModalverbenView() {
     setResult(isCorrect ? "correct" : "wrong");
     setStreak(newStreak);
     recordResult(isCorrect, newStreak);
+    recordSRItem("modal:" + round.modalKey + ":" + (round.negative ? "neg" : "aff"), isCorrect);
   };
 
   if (!data || !round) {

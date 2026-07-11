@@ -5,7 +5,7 @@
   const {
     register, useModuleStats, ModuleHeader, ModuleStatsFooter,
     ClockFace, germanTime, formatDigital, shuffle, pickWithDistractors,
-    capFirst, SUBJECTS, FR_PRON,
+    capFirst, SUBJECTS, FR_PRON, recordSRItem,
   } = window.MischMasch;
 
 // complement = what goes mid-clause at the end but before any separable
@@ -386,6 +386,7 @@ function TagesablaufView() {
     setResult(isCorrect ? "correct" : "wrong");
     setStreak(newStreak);
     recordResult(isCorrect, newStreak);
+    recordSRItem("tages:" + round.verb.inf, isCorrect);
   };
 
   if (!data || !round) {

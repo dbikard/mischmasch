@@ -5,7 +5,7 @@
   const { useState, useEffect, useCallback } = React;
   const {
     register, useModuleStats, ModuleHeader, ModuleStatsFooter,
-    ClockFace, germanTime, formatDigital,
+    ClockFace, germanTime, formatDigital, recordSRItem,
   } = window.MischMasch;
 
 const TIME_WORD_POOL = [
@@ -13,6 +13,15 @@ const TIME_WORD_POOL = [
   "sieben", "acht", "neun", "zehn", "elf", "zwölf", "zwanzig",
   "viertel", "halb", "nach", "vor",
 ];
+
+// Phrase pattern (SR item class) for a given minute — must stay in sync
+// with TIME_CLASS_MIN below.
+function timeClassOf(m) {
+  for (const [cls, mins] of Object.entries(TIME_CLASS_MIN)) {
+    if (mins.includes(m)) return cls;
+  }
+  return "nach";
+}
 
 function TimeView() {
   const [hour, setHour] = useState(3);
@@ -57,6 +66,7 @@ function TimeView() {
     setResult(isCorrect ? "correct" : "wrong");
     setStreak(newStreak);
     recordResult(isCorrect, newStreak);
+    recordSRItem("time:" + timeClassOf(minute), isCorrect);
     setTimeout(nextRound, 1800);
   };
 

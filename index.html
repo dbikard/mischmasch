@@ -28,7 +28,7 @@ const { useState, useEffect, useCallback, useRef, useMemo } = React;
 window.MischMasch = { modules: [] };
 window.MischMasch.register = function (m) { window.MischMasch.modules.push(m); };
 
-const APP_VERSION = "3.0";
+const APP_VERSION = "3.1";
 const STORAGE_KEY = "vocab-de-fr";
 const CATEGORIES_KEY = "vocab-de-fr-categories";
 const FILTER_KEY = "vocab-de-fr-filter";
@@ -2063,7 +2063,7 @@ function ClockFace({ hour, minute }) {
 Object.assign(window.MischMasch, {
   useModuleStats, ModuleHeader, ModuleStatsFooter, ClockFace,
   germanTime, formatDigital, shuffle, pickWithDistractors,
-  capFirst, SUBJECTS, FR_PRON,
+  capFirst, SUBJECTS, FR_PRON, recordSRItem,
 });
 // Module <script> tags run (and register) after this script during Babel's
 // run phase. Defer the mount by one macrotask so the registry is complete
