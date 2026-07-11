@@ -11,5 +11,11 @@
   { "id": "maeppchen", "name": "Mäppchen", "file": "maeppchen.tsv" },
   { "id": "meinungen", "name": "Meinungen", "file": "meinungen.tsv" },
   { "id": "verben", "name": "Verben", "file": "verben.tsv" },
-  { "id": "tageszeiten", "name": "Tageszeiten", "file": "tageszeiten.tsv" }
+  { "id": "tageszeiten", "name": "Tageszeiten", "file": "tageszeiten.tsv" },
+  { "id": "wochentage", "name": "Meine Woche", "file": "wochentage.tsv" },
+  { "id": "jahreszeiten", "name": "Meine Jahreszeiten", "file": "jahreszeiten.tsv" },
+  { "id": "monate", "name": "Mein Jahr", "file": "monate.tsv" },
+  { "id": "in-der-klasse", "name": "In der Klasse", "file": "in-der-klasse.tsv" },
+  { "id": "essen-trinken", "name": "Essen und Trinken", "file": "essen-trinken.tsv" },
+  { "id": "freizeit-pflichten", "name": "Freizeit & Pflichten", "file": "freizeit-pflichten.tsv" }
 ]
