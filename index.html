@@ -28,7 +28,7 @@ const { useState, useEffect, useCallback, useRef, useMemo } = React;
 window.MischMasch = { modules: [] };
 window.MischMasch.register = function (m) { window.MischMasch.modules.push(m); };
 
-const APP_VERSION = "2.9";
+const APP_VERSION = "3.0";
 const STORAGE_KEY = "vocab-de-fr";
 const CATEGORIES_KEY = "vocab-de-fr-categories";
 const FILTER_KEY = "vocab-de-fr-filter";
@@ -1808,13 +1808,30 @@ function StatsView({ words, categories, save }) {
   const catNames = {};
   categories.forEach((c) => { catNames[c.id] = c.name; });
 
+  // Grammar-exercise mastery from the unified SR store (per-item levels).
+  const srStore = loadSRStore();
+  const grammarStats = MODULES.filter((m) => m.sr).map((m) => {
+    const items = m.sr.items();
+    const dist = [0, 0, 0, 0];
+    let seen = 0;
+    items.forEach((id) => {
+      const r = srGet(srStore, id);
+      dist[srLevel(r)]++;
+      if ((r.correct || 0) + (r.wrong || 0) > 0) seen++;
+    });
+    return { id: m.id, icon: m.icon, label: m.label, dist, total: items.length, mastered: dist[3], seen };
+  });
+  const anyGrammarSeen = grammarStats.some((g) => g.seen > 0);
+
   const resetAll = () => {
     const next = words.map((w) => ({ ...w, correct: 0, wrong: 0, genderCorrect: 0, genderWrong: 0, lastPracticed: 0 }));
+    localStorage.removeItem(SR_KEY);
+    MODULES.forEach((m) => localStorage.removeItem(MODULE_STATS_KEY(m.id)));
     save(next);
     setConfirm(false);
   };
 
-  if (words.length === 0) {
+  if (words.length === 0 && !anyGrammarSeen) {
     return (
       <div className="fade-in" style={{ paddingTop: 40, textAlign: "center" }}>
         <h1 style={{ marginBottom: 16 }}>Stats</h1>
@@ -1830,6 +1847,7 @@ function StatsView({ words, categories, save }) {
     <div className="fade-in" style={{ paddingTop: 32 }}>
       <h1 style={{ marginBottom: 20 }}>Stats</h1>
 
+      {total > 0 && (
       <div className="card" style={{ padding: 20, marginBottom: 16 }}>
         <h2 style={{ fontSize: 20, marginBottom: 14, position: "relative" }}>Translation Progress</h2>
         <div style={{ display: "flex", flexDirection: "column", gap: 10, position: "relative" }}>
@@ -1849,6 +1867,7 @@ function StatsView({ words, categories, save }) {
           ))}
         </div>
       </div>
+      )}
 
       {withArticle > 0 && (
         <div className="card" style={{ padding: 20, marginBottom: 16 }}>
@@ -1872,6 +1891,39 @@ function StatsView({ words, categories, save }) {
         </div>
       )}
 
+      {grammarStats.length > 0 && (
+        <div className="card" style={{ padding: 20, marginBottom: 16 }}>
+          <h2 style={{ fontSize: 20, marginBottom: 4, position: "relative" }}>Übungen</h2>
+          <div style={{ fontSize: 12, color: "var(--ink2)", marginBottom: 16, position: "relative" }}>
+            Grammatik-Fortschritt (Auto-Modus)
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14, position: "relative" }}>
+            {grammarStats.map((g) => (
+              <div key={g.id}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 600, marginBottom: 5 }}>
+                  <span><span aria-hidden="true">{g.icon}</span> {g.label}</span>
+                  <span style={{ color: "var(--ink2)" }}>{g.mastered}/{g.total} gemeistert</span>
+                </div>
+                <div style={{ display: "flex", height: 8, borderRadius: 4, overflow: "hidden", background: "var(--warm)" }}>
+                  {LEVELS.map((lv, i) => g.dist[i] > 0 && (
+                    <div key={i} title={`${lv.label}: ${g.dist[i]}`} style={{ width: `${(g.dist[i] / g.total) * 100}%`, background: lv.color }} />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 16, position: "relative" }}>
+            {LEVELS.map((lv, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--ink2)" }}>
+                <span style={{ width: 10, height: 10, borderRadius: 3, background: lv.color, display: "inline-block" }} />
+                {lv.label}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {total > 0 && (
       <div className="card" style={{ padding: 20, marginBottom: 16 }}>
         <h2 style={{ fontSize: 20, marginBottom: 14, position: "relative" }}>Word Details</h2>
         <div className="cat-chips" style={{ marginBottom: 12, position: "relative" }}>
@@ -1925,6 +1977,7 @@ function StatsView({ words, categories, save }) {
             })}
         </div>
       </div>
+      )}
 
       <button className="btn btn-outline" style={{ color: "var(--red)", borderColor: "#fdecea" }} onClick={() => setConfirm(true)}>
         Reset all progress
@@ -1935,7 +1988,7 @@ function StatsView({ words, categories, save }) {
           <div className="confirm-box" onClick={(e) => e.stopPropagation()}>
             <h2 style={{ marginBottom: 8 }}>Reset progress?</h2>
             <p style={{ fontSize: 14, color: "var(--ink2)", marginBottom: 20 }}>
-              This resets all stats for every word. Your word list stays intact.
+              This resets all progress — vocabulary and exercises. Your word list stays intact.
             </p>
             <div style={{ display: "flex", gap: 10 }}>
               <button className="btn btn-secondary" onClick={() => setConfirm(false)}>Cancel</button>
