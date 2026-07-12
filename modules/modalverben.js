@@ -27,9 +27,9 @@
 // its placement are always correct — no runtime derivation to get wrong.
 window.MODALVERBEN_DATA = {
   modals: {
-    "dürfen": { fr: "avoir le droit de", ich: "darf",  du: "darfst",  er: "darf",  sie: "darf",  wir: "dürfen" },
-    "müssen": { fr: "devoir",            ich: "muss",  du: "musst",   er: "muss",  sie: "muss",  wir: "müssen" },
-    "können": { fr: "pouvoir",           ich: "kann",  du: "kannst",  er: "kann",  sie: "kann",  wir: "können" },
+    "dürfen": { fr: "avoir le droit de", negFr: "ne pas avoir le droit de", ich: "darf",  du: "darfst",  er: "darf",  sie: "darf",  wir: "dürfen" },
+    "müssen": { fr: "devoir",            negFr: "ne pas être obligé de",    ich: "muss",  du: "musst",   er: "muss",  sie: "muss",  wir: "müssen" },
+    "können": { fr: "pouvoir",           negFr: "ne pas pouvoir",           ich: "kann",  du: "kannst",  er: "kann",  sie: "kann",  wir: "können" },
   },
   // neg tails cover: kein pl (keine), kein m (keinen), kein n (kein),
   // nicht + bare verb, nicht + prep phrase, nicht + definite object.
@@ -138,10 +138,10 @@ function ModalverbenView() {
           {negative ? "✗ négatif" : "✓ affirmatif"}
         </div>
         <div style={{ fontSize: 13, color: "var(--ink2)", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600, marginTop: 12, position: "relative" }}>
-          {FR_PRON[subject]} ({subject}) · {modal.fr}
+          {FR_PRON[subject]} ({subject}) · {negative ? modal.negFr : modal.fr}
         </div>
         <div style={{ fontFamily: "'Lora', serif", fontSize: 24, fontWeight: 700, color: "var(--ink)", marginTop: 4, position: "relative" }}>
-          {negative ? "ne pas " : ""}{activity.fr}
+          {activity.fr}
         </div>
         {result && (
           <div className="fade-in" style={{ marginTop: 10, position: "relative" }}>
@@ -205,8 +205,8 @@ function ModalverbenView() {
       kind: "tokens",
       badge: negative ? "✗ négatif" : "✓ affirmatif",
       badgeNeg: negative,
-      cue: `${FR_PRON[subject]} (${subject}) · ${modal.fr}`,
-      prompt: (negative ? "ne pas " : "") + activity.fr,
+      cue: `${FR_PRON[subject]} (${subject}) · ${negative ? modal.negFr : modal.fr}`,
+      prompt: activity.fr,
       starter: capFirst(subject),
       pool: buildModalverbenPool(round, data),
       target,
