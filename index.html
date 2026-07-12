@@ -28,7 +28,7 @@ const { useState, useEffect, useCallback, useRef, useMemo } = React;
 window.MischMasch = { modules: [] };
 window.MischMasch.register = function (m) { window.MischMasch.modules.push(m); };
 
-const APP_VERSION = "3.2";
+const APP_VERSION = "3.3";
 const STORAGE_KEY = "vocab-de-fr";
 const CATEGORIES_KEY = "vocab-de-fr-categories";
 const FILTER_KEY = "vocab-de-fr-filter";
@@ -54,26 +54,42 @@ function pickWithDistractors(correct, all, count) {
   return shuffle([correct, ...shuffle(others).slice(0, count)]);
 }
 
+// Split a pair into separate cards only when BOTH sides list the same
+// number (>1) of "/"-separated alternatives — e.g.
+//   "am Morgen / morgens" ⇄ "le matin / tous les matins"
+// becomes two cards, so the two distinct expressions are never asked at
+// once. One-sided slashes (synonyms like "le collier / la chaîne") and the
+// separable-verb notation ("auf/stehen") stay as a single card.
+function splitPair(de, fr) {
+  const deParts = de.split("/").map((s) => s.trim());
+  const frParts = fr.split("/").map((s) => s.trim());
+  if (deParts.length > 1 && deParts.length === frParts.length &&
+      deParts.every(Boolean) && frParts.every(Boolean)) {
+    return deParts.map((d, i) => [d, frParts[i]]);
+  }
+  return [[de, fr]];
+}
+
+function makeWord(de, fr, category) {
+  let article = null;
+  const m = de.match(/^(der|die|das)\s+/i);
+  if (m) { article = m[1].toLowerCase(); de = de.slice(m[0].length); }
+  return { de: de.trim(), fr: fr.trim(), article, correct: 0, wrong: 0, genderCorrect: 0, genderWrong: 0, category: category || "my-words" };
+}
+
 function parseTable(text, category) {
   return text
     .trim()
     .split("\n")
     .filter(Boolean)
-    .map((line) => {
+    .flatMap((line) => {
       const parts = line.split(/\t|\s*\|\s*|;\s*|\s{2,}/);
-      if (parts.length < 2) return null;
-      let de = parts[0].trim();
+      if (parts.length < 2) return [];
+      const de = parts[0].trim();
       const fr = parts[1].trim();
-      if (!de || !fr || /^[-=:]+$/.test(de) || /^[-=:]+$/.test(fr)) return null;
-      let article = null;
-      const m = de.match(/^(der|die|das)\s+/i);
-      if (m) {
-        article = m[1].toLowerCase();
-        de = de.slice(m[0].length);
-      }
-      return { de, fr, article, correct: 0, wrong: 0, genderCorrect: 0, genderWrong: 0, category: category || "my-words" };
-    })
-    .filter(Boolean);
+      if (!de || !fr || /^[-=:]+$/.test(de) || /^[-=:]+$/.test(fr)) return [];
+      return splitPair(de, fr).map(([d, f]) => makeWord(d, f, category));
+    });
 }
 
 function getLevel(w) {
@@ -659,10 +675,12 @@ function VocabTrainer() {
         if (stored) {
           for (const w of stored) {
             const k = wordKey(w);
-            if (!seen.has(k)) {
-              seen.add(k);
-              merged.push({ ...w, category: w.category || "my-words" });
-            }
+            if (seen.has(k)) continue;
+            // Drop stale parallel-slash combos saved before splitting existed
+            // — they're now superseded by the separate split cards above.
+            if (splitPair(w.de, w.fr).length > 1) continue;
+            seen.add(k);
+            merged.push({ ...w, category: w.category || "my-words" });
           }
         }
         setWords(merged);
