@@ -28,7 +28,7 @@ const { useState, useEffect, useCallback, useRef, useMemo } = React;
 window.MischMasch = { modules: [] };
 window.MischMasch.register = function (m) { window.MischMasch.modules.push(m); };
 
-const APP_VERSION = "3.1";
+const APP_VERSION = "3.2";
 const STORAGE_KEY = "vocab-de-fr";
 const CATEGORIES_KEY = "vocab-de-fr-categories";
 const FILTER_KEY = "vocab-de-fr-filter";
@@ -1088,6 +1088,26 @@ function HomeView({ words, categories, setView }) {
   const catCounts = {};
   words.forEach((w) => { catCounts[w.category] = (catCounts[w.category] || 0) + 1; });
 
+  const [shared, setShared] = useState(false);
+  // Native share sheet (WhatsApp, Messages, …) where available; otherwise
+  // copy the app link to the clipboard with brief confirmation.
+  const shareApp = async () => {
+    const url = location.origin + location.pathname;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "MischMasch", text: "Lerne mit mir mit MischMasch — Deutsch ↔ Français", url });
+      } catch (e) { /* user cancelled — no-op */ }
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      setShared(true);
+      setTimeout(() => setShared(false), 2000);
+    } catch {
+      window.prompt("Link kopieren:", url);
+    }
+  };
+
   return (
     <div className="fade-in" style={{ paddingTop: 40 }}>
       <div style={{ textAlign: "center", marginBottom: 32 }}>
@@ -1151,6 +1171,17 @@ function HomeView({ words, categories, setView }) {
           </button>
         </div>
       )}
+
+      <div style={{ textAlign: "center", marginTop: 20 }}>
+        <button
+          onClick={shareApp}
+          aria-label="App teilen"
+          style={{ background: "none", border: "none", cursor: "pointer", color: shared ? "var(--green)" : "var(--ink2)", fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, padding: 6 }}
+        >
+          <span aria-hidden="true">{shared ? "✓" : "\u{1F4E4}"}</span>
+          {shared ? "Link kopiert!" : "MischMasch teilen"}
+        </button>
+      </div>
     </div>
   );
 }
