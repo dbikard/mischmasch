@@ -28,7 +28,7 @@ const { useState, useEffect, useCallback, useRef, useMemo } = React;
 window.MischMasch = { modules: [] };
 window.MischMasch.register = function (m) { window.MischMasch.modules.push(m); };
 
-const APP_VERSION = "3.9";
+const APP_VERSION = "4.0";
 const STORAGE_KEY = "vocab-de-fr";
 const CATEGORIES_KEY = "vocab-de-fr-categories";
 const FILTER_KEY = "vocab-de-fr-filter";
@@ -814,7 +814,7 @@ function VocabTrainer() {
             <button className="back-btn" onClick={() => setView("home")}>
               {"←"} Home
             </button>
-            <AutoModeView words={words} save={save} />
+            <AutoModeView words={words} save={save} categories={categories} />
           </div>
         )}
         {view === "stats" && <StatsView words={words} categories={categories} save={save} />}
@@ -931,6 +931,7 @@ function ChoiceRound({ spec, onResult }) {
             {spec.post}
           </div>
         )}
+        {spec.context && <div style={{ fontSize: 11, color: "var(--ink2)", marginTop: 8, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600, opacity: 0.7, position: "relative" }}>{spec.context}</div>}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
         {spec.options.map((opt) => {
@@ -971,6 +972,7 @@ function TypedRound({ spec, onResult }) {
       <div className="card" style={{ marginBottom: 16, minHeight: 120, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
         <div className="card-hint" style={{ marginBottom: 12, position: "relative" }}>{spec.cue}</div>
         <div className="card-word">{spec.prompt}</div>
+        {spec.context && <div style={{ fontSize: 11, color: "var(--ink2)", marginTop: 8, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600, opacity: 0.7, position: "relative" }}>{spec.context}</div>}
       </div>
       <input
         ref={ref} type="text" value={input} onChange={(e) => setInput(e.target.value)}
@@ -1072,7 +1074,7 @@ function TokensRound({ spec, onResult }) {
 // Vocabulary is a built-in source; each grammar module contributes one
 // via its `sr` interface. A source exposes: items(), recOf(id) → SR
 // record, generateRound(id) → spec, record(id, ok) → persist.
-function autoVocabSource(words, save, directionMode) {
+function autoVocabSource(words, save, directionMode, catName) {
   const byId = {};
   words.forEach((w) => {
     const k = wordKey(w);
@@ -1090,14 +1092,15 @@ function autoVocabSource(words, save, directionMode) {
     },
     generateRound: (id) => {
       const { word, kind } = byId[id];
+      const context = catName ? catName(word.category) : null;
       if (kind === "g") {
-        return { kind: "choice", word: word.de, cue: "Welcher Artikel?", options: ["der", "die", "das"], correct: word.article };
+        return { kind: "choice", word: word.de, cue: "Welcher Artikel?", context, options: ["der", "die", "das"], correct: word.article };
       }
       const dir = directionMode === "both" ? (Math.random() < 0.5 ? "de>fr" : "fr>de") : directionMode;
       if (dir === "de>fr") {
-        return { kind: "typed", cue: "Deutsch → Français", prompt: `${word.article ? word.article + " " : ""}${word.de}`, expected: word.fr, display: word.fr, placeholder: "Type in French..." };
+        return { kind: "typed", cue: "Deutsch → Français", context, prompt: `${word.article ? word.article + " " : ""}${word.de}`, expected: word.fr, display: word.fr, placeholder: "Type in French..." };
       }
-      return { kind: "typed", cue: "Français → Deutsch", prompt: word.fr, expected: word.de, display: `${word.article ? word.article + " " : ""}${word.de}`, placeholder: "Type in German...", article: word.article || null };
+      return { kind: "typed", cue: "Français → Deutsch", context, prompt: word.fr, expected: word.de, display: `${word.article ? word.article + " " : ""}${word.de}`, placeholder: "Type in German...", article: word.article || null };
     },
     record: (id, ok) => {
       const { word, kind } = byId[id];
@@ -1117,16 +1120,20 @@ function autoModuleSource(m) {
 }
 
 /* ── auto-mode player ─────────────────────────────────────────── */
-function AutoModeView({ words, save }) {
+function AutoModeView({ words, save, categories }) {
   const directionMode = (() => {
     const s = localStorage.getItem(DIRECTION_KEY);
     return s === "de>fr" || s === "fr>de" || s === "both" ? s : "both";
   })();
+  const catName = useCallback((id) => {
+    const c = (categories || []).find((x) => x.id === id);
+    return c ? c.name : null;
+  }, [categories]);
   const sources = useMemo(() => {
-    const list = [autoVocabSource(words, save, directionMode)];
+    const list = [autoVocabSource(words, save, directionMode, catName)];
     MODULES.forEach((m) => { if (m.sr) list.push(autoModuleSource(m)); });
     return list;
-  }, [words, directionMode]);
+  }, [words, directionMode, catName]);
   const sourcesRef = useRef(sources);
   sourcesRef.current = sources;
 
@@ -1854,6 +1861,10 @@ function PracticeView({ words, categories, save }) {
                   ? `${current.article ? current.article + " " : ""}${current.de}`
                   : current.fr}
             </div>
+            {(() => {
+              const cn = (categories.find((c) => c.id === current.category) || {}).name;
+              return cn ? <div style={{ fontSize: 11, color: "var(--ink2)", marginTop: 8, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600, opacity: 0.7, position: "relative" }}>{cn}</div> : null;
+            })()}
             {(() => {
               const lv = mode === "gender" ? getGenderLevel(current) : getLevel(current);
               const lvInfo = LEVELS[lv];
