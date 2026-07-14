@@ -28,7 +28,7 @@ const { useState, useEffect, useCallback, useRef, useMemo } = React;
 window.MischMasch = { modules: [] };
 window.MischMasch.register = function (m) { window.MischMasch.modules.push(m); };
 
-const APP_VERSION = "3.5";
+const APP_VERSION = "3.6";
 const STORAGE_KEY = "vocab-de-fr";
 const CATEGORIES_KEY = "vocab-de-fr-categories";
 const FILTER_KEY = "vocab-de-fr-filter";
@@ -262,18 +262,57 @@ function srNormalize(s) {
     .replace(/[ôò]/g, "o").replace(/[îï]/g, "i").replace(/ç/g, "c").replace(/œ/g, "oe")
     .replace(/'/g, "'").replace(/-/g, " ");
 }
+// A leading article we tolerate on either side of an answer — French
+// (le/les/la/l'/un/une/des/du) and German definite + indefinite
+// (der/die/das/den/dem, ein/eine/einen/einem/einer/eines).
+const LEADING_ARTICLE_RE = /^(le|les|la|l'|un|une|des|du|der|die|das|den|dem|ein|eine|einen|einem|einer|eines)\s+/i;
+function stripArticle(s) {
+  return s.trim().toLowerCase().replace(LEADING_ARTICLE_RE, "");
+}
+
 // True if `input` matches `expected` (which may hold "/"-separated
 // variants), tolerating a leading French/German article on either side.
 function vocabAnswerMatches(input, expected) {
-  const strip = (s) => s.trim().toLowerCase().replace(/^(les?|la|l'|un|une|des|der|die|das)\s+/i, "");
   const user = input.trim().toLowerCase();
-  const userS = strip(input);
+  const userS = stripArticle(input);
   const alts = new Set();
-  expected.split("/").map((s) => s.trim().toLowerCase()).forEach((s) => { alts.add(s); alts.add(strip(s)); });
+  expected.split("/").map((s) => s.trim().toLowerCase()).forEach((s) => { alts.add(s); alts.add(stripArticle(s)); });
   for (const a of alts) {
     if (user === a || userS === a || srNormalize(user) === srNormalize(a) || srNormalize(userS) === srNormalize(a)) return true;
   }
   return false;
+}
+
+// Character-level diff for a near-miss. Longest-common-subsequence mask over
+// `b`: mask[i] is true when b's i-th char is part of the alignment with `a`.
+function lcsMatchMask(a, b) {
+  const n = a.length, m = b.length;
+  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = 1; i <= n; i++)
+    for (let j = 1; j <= m; j++)
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
+  const mask = new Array(m).fill(false);
+  let i = n, j = m;
+  while (i > 0 && j > 0) {
+    if (a[i - 1] === b[j - 1]) { mask[j - 1] = true; i--; j--; }
+    else if (dp[i - 1][j] >= dp[i][j - 1]) i--; else j--;
+  }
+  return { mask, lcs: dp[n][m] };
+}
+
+// Renders `answer` with the letters that differ from the learner's `attempt`
+// highlighted — so a one-letter slip ("Vocabeln" vs "Vokabeln") is easy to
+// see. Case-insensitive alignment; plain text when there's no attempt or the
+// two are too different to align usefully.
+function DiffAnswer({ attempt, answer }) {
+  const a = (attempt || "").trim().toLowerCase();
+  const b = answer.toLowerCase();
+  if (!a) return answer;
+  const { mask, lcs } = lcsMatchMask(a, b);
+  if (lcs / Math.max(a.length, b.length) < 0.5) return answer;
+  return answer.split("").map((ch, i) =>
+    mask[i] || ch === " " ? ch : <span key={i} className="spell-diff">{ch}</span>
+  );
 }
 
 /* ── module infrastructure ───────────────────────────────────── */
@@ -484,6 +523,11 @@ input[type="text"] {
   text-align: center; outline: none;
 }
 input[type="text"]:focus { border-color: var(--accent); }
+
+.spell-diff {
+  color: var(--accent); font-weight: 800;
+  background: rgba(196,90,60,0.16); border-radius: 3px; padding: 0 2px;
+}
 
 .streak-badge {
   display: inline-flex; align-items: center; gap: 4px;
@@ -880,7 +924,7 @@ function TypedRound({ spec, onResult }) {
       {done === "wrong" && (
         <div className="fade-in" style={{ marginTop: 12, padding: 14, borderRadius: 12, background: "#fdecea", textAlign: "center" }}>
           <div style={{ fontSize: 13, color: "var(--red)", fontWeight: 600, marginBottom: 4 }}>Richtige Antwort:</div>
-          <div style={{ fontFamily: "'Lora', serif", fontSize: 24, color: "var(--ink)" }}>{spec.display}</div>
+          <div style={{ fontFamily: "'Lora', serif", fontSize: 24, color: "var(--ink)" }}><DiffAnswer attempt={input} answer={spec.display} /></div>
         </div>
       )}
       {done === "correct" && (
@@ -1465,7 +1509,13 @@ function PracticeView({ words, categories, save }) {
     }
     const userInput = input.trim().toLowerCase();
     const wordAlts = rawExpected.split("/").map((s) => s.trim().toLowerCase());
-    const isCorrect = alternatives.some((alt) => userInput === alt || normalizeText(userInput) === normalizeText(alt));
+    // For words without a gender article, also accept a stray leading
+    // article (e.g. "einen Kebab essen" for "Kebab essen"). Gender words
+    // keep the stricter article handling below.
+    const userAlt = current.article ? userInput : stripArticle(userInput);
+    const isCorrect = alternatives.some((alt) =>
+      userInput === alt || normalizeText(userInput) === normalizeText(alt) ||
+      userAlt === alt || normalizeText(userAlt) === normalizeText(alt));
 
     // Check partial matches for fr>de when word has an article
     let partialType = null; // "no-article", "wrong-article", or "capitalization"
@@ -1772,7 +1822,7 @@ function PracticeView({ words, categories, save }) {
                     Correct answer:
                   </div>
                   <div style={{ fontFamily: "'Lora', serif", fontSize: 24, color: "var(--ink)" }}>
-                    {correctAnswer}
+                    <DiffAnswer attempt={input} answer={correctAnswer} />
                   </div>
                 </div>
               )}
