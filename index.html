@@ -28,7 +28,7 @@ const { useState, useEffect, useCallback, useRef, useMemo } = React;
 window.MischMasch = { modules: [] };
 window.MischMasch.register = function (m) { window.MischMasch.modules.push(m); };
 
-const APP_VERSION = "3.6";
+const APP_VERSION = "3.7";
 const STORAGE_KEY = "vocab-de-fr";
 const CATEGORIES_KEY = "vocab-de-fr-categories";
 const FILTER_KEY = "vocab-de-fr-filter";
@@ -281,6 +281,30 @@ function vocabAnswerMatches(input, expected) {
     if (user === a || userS === a || srNormalize(user) === srNormalize(a) || srNormalize(userS) === srNormalize(a)) return true;
   }
   return false;
+}
+
+// Acceptable leading articles for a German noun of the given gender
+// (nominative + accusative, definite + indefinite).
+function articleForms(article) {
+  if (article === "der") return ["der", "den", "ein", "einen"];
+  if (article === "die") return ["die", "eine"];
+  if (article === "das") return ["das", "ein"];
+  return [];
+}
+// Grade a typed German answer against `expected` (which may hold "/"
+// variants). Returns "correct", "article" (right word but the article is
+// missing / wrong / superfluous), or "wrong". `article` is the word's
+// gender article (der/die/das) or null for article-less lemmas.
+function checkVocab(input, expected, article) {
+  const user = input.trim().toLowerCase();
+  const bare = expected.split("/").map((s) => s.trim().toLowerCase());
+  const ok = new Set();
+  bare.forEach((w) => { ok.add(w); articleForms(article).forEach((a) => ok.add(a + " " + w)); });
+  for (const a of ok) if (user === a || srNormalize(user) === srNormalize(a)) return "correct";
+  const userS = stripArticle(input);
+  const bareS = bare.map((w) => stripArticle(w));
+  for (const w of bareS) if (userS === w || srNormalize(userS) === srNormalize(w)) return "article";
+  return "wrong";
 }
 
 // Character-level diff for a near-miss. Longest-common-subsequence mask over
@@ -903,12 +927,16 @@ function ChoiceRound({ spec, onResult }) {
 
 function TypedRound({ spec, onResult }) {
   const [input, setInput] = useState("");
-  const [done, setDone] = useState(null); // "correct" | "wrong"
+  const [done, setDone] = useState(null); // "correct" | "article" | "wrong"
   const ref = useRef(null);
   useEffect(() => { const t = setTimeout(() => ref.current?.focus(), 50); return () => clearTimeout(t); }, []);
   const check = () => {
     if (done || !input.trim()) return;
-    setDone(vocabAnswerMatches(input, spec.expected) ? "correct" : "wrong");
+    // Article-aware grading for German answers; simple match otherwise.
+    const res = spec.article !== undefined
+      ? checkVocab(input, spec.expected, spec.article)
+      : (vocabAnswerMatches(input, spec.expected) ? "correct" : "wrong");
+    setDone(res);
   };
   return (
     <div className="fade-in">
@@ -918,12 +946,18 @@ function TypedRound({ spec, onResult }) {
       </div>
       <input
         ref={ref} type="text" value={input} onChange={(e) => setInput(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && (done ? onResult(done === "correct") : check())}
+        onKeyDown={(e) => e.key === "Enter" && (done ? onResult(done) : check())}
         placeholder={spec.placeholder} disabled={!!done} autoFocus
       />
       {done === "wrong" && (
         <div className="fade-in" style={{ marginTop: 12, padding: 14, borderRadius: 12, background: "#fdecea", textAlign: "center" }}>
           <div style={{ fontSize: 13, color: "var(--red)", fontWeight: 600, marginBottom: 4 }}>Richtige Antwort:</div>
+          <div style={{ fontFamily: "'Lora', serif", fontSize: 24, color: "var(--ink)" }}><DiffAnswer attempt={input} answer={spec.display} /></div>
+        </div>
+      )}
+      {done === "article" && (
+        <div className="fade-in" style={{ marginTop: 12, padding: 14, borderRadius: 12, background: "#fef5e7", textAlign: "center" }}>
+          <div style={{ fontSize: 13, color: "var(--accent)", fontWeight: 600, marginBottom: 4 }}>Fast — achte auf den Artikel!</div>
           <div style={{ fontFamily: "'Lora', serif", fontSize: 24, color: "var(--ink)" }}><DiffAnswer attempt={input} answer={spec.display} /></div>
         </div>
       )}
@@ -934,7 +968,7 @@ function TypedRound({ spec, onResult }) {
       )}
       <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
         {done ? (
-          <button className="btn btn-primary" onClick={() => onResult(done === "correct")}>Weiter {"→"}</button>
+          <button className="btn btn-primary" onClick={() => onResult(done)}>Weiter {"→"}</button>
         ) : (
           <>
             <button className="btn btn-outline btn-small" onClick={() => setDone("wrong")}>Show answer</button>
@@ -1027,7 +1061,7 @@ function autoVocabSource(words, save, directionMode) {
       if (dir === "de>fr") {
         return { kind: "typed", cue: "Deutsch → Français", prompt: `${word.article ? word.article + " " : ""}${word.de}`, expected: word.fr, display: word.fr, placeholder: "Type in French..." };
       }
-      return { kind: "typed", cue: "Français → Deutsch", prompt: word.fr, expected: word.de, display: `${word.article ? word.article + " " : ""}${word.de}`, placeholder: "Type in German..." };
+      return { kind: "typed", cue: "Français → Deutsch", prompt: word.fr, expected: word.de, display: `${word.article ? word.article + " " : ""}${word.de}`, placeholder: "Type in German...", article: word.article || null };
     },
     record: (id, ok) => {
       const { word, kind } = byId[id];
@@ -1096,10 +1130,12 @@ function AutoModeView({ words, save }) {
 
   useEffect(() => { pickNext(); }, [pickNext]);
 
-  const onResult = (ok) => {
+  const onResult = (r) => {
+    // r is a boolean (choice/tokens) or "correct"/"article"/"wrong" (typed).
+    const kind = r === true ? "correct" : r === false ? "wrong" : r;
     const src = sourcesRef.current.find((s) => s.id === pick.srcId);
-    if (src) src.record(pick.itemId, ok);
-    setStreak((s) => (ok ? s + 1 : 0));
+    if (src) src.record(pick.itemId, kind !== "wrong"); // article counts as known
+    setStreak((s) => (kind === "correct" ? s + 1 : kind === "wrong" ? 0 : s));
     setCount((c) => c + 1);
     pickNext();
   };
@@ -1513,7 +1549,7 @@ function PracticeView({ words, categories, save }) {
     // article (e.g. "einen Kebab essen" for "Kebab essen"). Gender words
     // keep the stricter article handling below.
     const userAlt = current.article ? userInput : stripArticle(userInput);
-    const isCorrect = alternatives.some((alt) =>
+    let isCorrect = alternatives.some((alt) =>
       userInput === alt || normalizeText(userInput) === normalizeText(alt) ||
       userAlt === alt || normalizeText(userAlt) === normalizeText(alt));
 
@@ -1566,6 +1602,14 @@ function PracticeView({ words, categories, save }) {
       }
     }
 
+    // Non-gender lemma (no der/die/das): a missing / wrong / superfluous
+    // article is a near-miss (yellow), not a full miss (red) or pass (green).
+    if (direction === "fr>de" && !current.article && !partialType) {
+      const grade = checkVocab(input, rawExpected, null);
+      if (grade === "article") partialType = "article";
+      else isCorrect = grade === "correct";
+    }
+
     if (isCorrect && !partialType) {
       setResult("correct");
       setCorrectAnswer(displayExpected);
@@ -1594,6 +1638,13 @@ function PracticeView({ words, categories, save }) {
     } else if (partialType === "capitalization") {
       setResult("partial");
       setPartialReason("Watch the capitalization!");
+      setCorrectAnswer(displayExpected);
+      setSessionCount((c) => c + 1);
+      updateWord(current, "correct", 0.5);
+      setTimeout(nextCard, 1500);
+    } else if (partialType === "article") {
+      setResult("partial");
+      setPartialReason("Fast — achte auf den Artikel!");
       setCorrectAnswer(displayExpected);
       setSessionCount((c) => c + 1);
       updateWord(current, "correct", 0.5);
@@ -1812,7 +1863,7 @@ function PracticeView({ words, categories, save }) {
                     {partialReason}
                   </div>
                   <div style={{ fontFamily: "'Lora', serif", fontSize: 24, color: "var(--ink)" }}>
-                    {correctAnswer}
+                    <DiffAnswer attempt={input} answer={correctAnswer} />
                   </div>
                 </div>
               )}

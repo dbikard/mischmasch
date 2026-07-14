@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mischmasch-v37';
+const CACHE_NAME = 'mischmasch-v38';
 const ASSETS = [
   './',
   './index.html',
