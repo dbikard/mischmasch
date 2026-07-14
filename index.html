@@ -28,7 +28,7 @@ const { useState, useEffect, useCallback, useRef, useMemo } = React;
 window.MischMasch = { modules: [] };
 window.MischMasch.register = function (m) { window.MischMasch.modules.push(m); };
 
-const APP_VERSION = "3.8";
+const APP_VERSION = "3.9";
 const STORAGE_KEY = "vocab-de-fr";
 const CATEGORIES_KEY = "vocab-de-fr-categories";
 const FILTER_KEY = "vocab-de-fr-filter";
@@ -1031,6 +1031,14 @@ function TokensRound({ spec, onResult }) {
         {spec.prompt && <div style={{ fontFamily: "'Lora', serif", fontSize: 22, fontWeight: 700, color: "var(--ink)", marginTop: 4, position: "relative", textAlign: "center" }}>{spec.prompt}</div>}
         {result && <div className="fade-in" style={{ marginTop: 10, position: "relative", textAlign: "center", fontSize: 15, fontWeight: 600, color: result === "correct" ? "var(--green)" : "var(--red)" }}>{spec.target}</div>}
       </div>
+      {result === "wrong" && spec.wrongHint && (() => {
+        const h = spec.wrongHint([spec.starter, ...tokens].filter(Boolean).join(" "));
+        return h ? (
+          <div className="fade-in" style={{ marginBottom: 16, padding: "8px 12px", borderRadius: 10, background: "#fef5e7", fontSize: 12, fontWeight: 600, color: "var(--accent)", textAlign: "center" }}>
+            {"\u{1F4A1}"} {h}
+          </div>
+        ) : null;
+      })()}
       <div className={`time-slot ${slotClass}`}>
         {spec.starter && <span className="time-token time-token-locked">{spec.starter}</span>}
         {tokens.length === 0 && !spec.starter ? (

@@ -56,6 +56,21 @@ window.MODALVERBEN_DATA = {
 // Sentence builder: conjugate the modal, keep the main verb at the end,
 // and choose the right negation (kein-/nicht) for negative rounds.
 const NEG_WORDS = ["nicht", "kein", "keine", "keinen"];
+const KEIN_FORMS = ["kein", "keine", "keinen"];
+
+// When a wrong answer swapped the negator type (nicht ↔ kein-), return a
+// short rule reminder; otherwise null. This is the exact confusion the
+// module trains, so the reminder only fires on that specific miss.
+function negationRuleHint(userPhrase, target) {
+  const u = userPhrase.toLowerCase().split(/\s+/);
+  const t = target.toLowerCase().split(/\s+/);
+  const tKein = t.some((w) => KEIN_FORMS.includes(w)), tNicht = t.includes("nicht");
+  const uKein = u.some((w) => KEIN_FORMS.includes(w)), uNicht = u.includes("nicht");
+  if ((tKein && uNicht && !uKein) || (tNicht && uKein && !uNicht)) {
+    return "kein- verneint unbestimmte Objekte (keine Filme) · nicht verneint den Rest";
+  }
+  return null;
+}
 
 function modalverbenRound(data) {
   const modalKeys = Object.keys(data.modals);
@@ -150,6 +165,11 @@ function ModalverbenView() {
             </div>
           </div>
         )}
+        {result === "wrong" && negationRuleHint([starter, ...tokens].join(" "), target) && (
+          <div className="fade-in" style={{ marginTop: 10, padding: "8px 12px", borderRadius: 10, background: "#fef5e7", fontSize: 12, fontWeight: 600, color: "var(--accent)", position: "relative" }}>
+            {"\u{1F4A1}"} {negationRuleHint([starter, ...tokens].join(" "), target)}
+          </div>
+        )}
       </div>
 
       <div className={`time-slot ${slotClass}`}>
@@ -210,6 +230,7 @@ function ModalverbenView() {
       starter: capFirst(subject),
       pool: buildModalverbenPool(round, data),
       target,
+      wrongHint: (phrase) => negationRuleHint(phrase, target),
     };
   }
 
