@@ -28,7 +28,7 @@ const { useState, useEffect, useCallback, useRef, useMemo } = React;
 window.MischMasch = { modules: [] };
 window.MischMasch.register = function (m) { window.MischMasch.modules.push(m); };
 
-const APP_VERSION = "3.7";
+const APP_VERSION = "3.8";
 const STORAGE_KEY = "vocab-de-fr";
 const CATEGORIES_KEY = "vocab-de-fr-categories";
 const FILTER_KEY = "vocab-de-fr-filter";
@@ -654,6 +654,19 @@ h2 { font-family: 'Lora', serif; font-size: 26px; font-weight: 700; }
   color: var(--ink2); padding: 4px 0; margin-bottom: 4px;
 }
 .back-btn:active { color: var(--accent); }
+
+.update-banner {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(74px + env(safe-area-inset-bottom, 0px)); z-index: 60;
+  max-width: calc(100% - 32px);
+  background: var(--accent); color: #fff; border: none;
+  font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 700;
+  padding: 10px 18px; border-radius: 999px; cursor: pointer;
+  box-shadow: 0 6px 20px rgba(44,36,22,0.22);
+  display: inline-flex; align-items: center; gap: 8px;
+  animation: fadeIn 0.3s ease-out;
+}
+.update-banner:active { background: #a84830; }
 `;
 
 /* ── shared module UI ────────────────────────────────────────── */
@@ -689,6 +702,16 @@ function VocabTrainer() {
   const [categories, setCategories] = useState([]);
   const [view, setView] = useState("home");
   const [loading, setLoading] = useState(true);
+  const [updateReady, setUpdateReady] = useState(false);
+
+  // Show a tap-to-refresh banner when the service worker has a new version
+  // waiting (it also refreshes on its own when the app is refocused).
+  useEffect(() => {
+    const onReady = () => setUpdateReady(true);
+    window.addEventListener("mm-update-ready", onReady);
+    if (window.__mmUpdateReady) setUpdateReady(true);
+    return () => window.removeEventListener("mm-update-ready", onReady);
+  }, []);
 
   useEffect(() => {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
@@ -804,6 +827,11 @@ function VocabTrainer() {
           </div>
         )}
       </div>
+      {updateReady && (
+        <button className="update-banner" onClick={() => window.__mmApplyUpdate && window.__mmApplyUpdate()}>
+          {"\u{1F504}"} Neue Version — aktualisieren
+        </button>
+      )}
       <Nav view={view} setView={setView} />
     </>
   );
@@ -2222,7 +2250,39 @@ setTimeout(() => {
 
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./service-worker.js');
+      navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' }).then(function (reg) {
+        var reloading = false, listening = false;
+        function reloadOnce() { if (reloading) return; reloading = true; location.reload(); }
+        function applyUpdate() {
+          if (!reg.waiting) return;
+          if (!listening) { navigator.serviceWorker.addEventListener('controllerchange', reloadOnce); listening = true; }
+          reg.waiting.postMessage('SKIP_WAITING');
+        }
+        function announce() {
+          window.__mmApplyUpdate = applyUpdate;
+          window.__mmUpdateReady = true;
+          window.dispatchEvent(new CustomEvent('mm-update-ready'));
+        }
+        // An update already installed and waiting (e.g. from a previous visit).
+        if (reg.waiting && navigator.serviceWorker.controller) announce();
+        // A new version finishes installing while the app is open.
+        reg.addEventListener('updatefound', function () {
+          var nw = reg.installing;
+          if (!nw) return;
+          nw.addEventListener('statechange', function () {
+            if (nw.state === 'installed' && navigator.serviceWorker.controller) announce();
+          });
+        });
+        // On returning to the app: apply a queued update silently, else check.
+        document.addEventListener('visibilitychange', function () {
+          if (document.hidden) return;
+          if (reg.waiting && navigator.serviceWorker.controller) applyUpdate();
+          else reg.update();
+        });
+        // Check now and periodically.
+        reg.update();
+        setInterval(function () { reg.update(); }, 30 * 60 * 1000);
+      }).catch(function () {});
     }
   </script>
 </body>

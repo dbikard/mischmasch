@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mischmasch-v38';
+const CACHE_NAME = 'mischmasch-v39';
 const ASSETS = [
   './',
   './index.html',
@@ -35,7 +35,14 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
   );
-  self.skipWaiting();
+  // Do not skipWaiting here: a freshly-installed update waits until the page
+  // tells it to activate (see the SKIP_WAITING message), so updates apply at
+  // a controlled moment (banner tap or when the app is refocused).
+});
+
+// The page posts this when it's ready to switch to the new version.
+self.addEventListener('message', (event) => {
+  if (event.data === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
