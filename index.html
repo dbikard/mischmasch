@@ -40,7 +40,8 @@ const MODULE_STATS_KEY = (id) => `vocab-de-fr-${id}-stats`;
 /* ── helpers ─────────────────────────────────────────────────── */
 // School-year tags ("6e", "5e", …) come from the optional `year` field in
 // words/index.json. The chosen year is shared by Vocabeln and Auto-Modus;
-// categories without a year (e.g. "My words") are always included.
+// categories without a year (e.g. "My words") are always included. Modules
+// may pass `year` to register(); Auto-Modus skips other years' modules.
 const yearLabel = (y) => y.replace(/e$/, "ème");
 function loadYear() {
   try { return localStorage.getItem(YEAR_KEY) || null; } catch { return null; }
@@ -1169,7 +1170,7 @@ function AutoModeView({ words, save, categories }) {
   const changeYear = (y) => { setYearPick(y); saveYear(y); };
   const sources = useMemo(() => {
     const list = [autoVocabSource(wordsInYear(words, categories, year), save, directionMode, catName)];
-    MODULES.forEach((m) => { if (m.sr) list.push(autoModuleSource(m)); });
+    MODULES.forEach((m) => { if (m.sr && (!year || !m.year || m.year === year)) list.push(autoModuleSource(m)); });
     return list;
   }, [words, categories, year, directionMode, catName]);
   const sourcesRef = useRef(sources);
@@ -2328,6 +2329,7 @@ setTimeout(() => {
   <script type="text/babel" src="./modules/tagesablauf.js"></script>
   <script type="text/babel" src="./modules/akkusativ.js"></script>
   <script type="text/babel" src="./modules/modalverben.js"></script>
+  <script type="text/babel" src="./modules/meinung.js"></script>
 
   <script>
     if ('serviceWorker' in navigator) {

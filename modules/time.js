@@ -175,7 +175,7 @@ function TimeView() {
   }
 
   register({
-    id: "time", icon: "\u{1F552}", label: "Uhrzeit", component: TimeView,
+    id: "time", icon: "\u{1F552}", label: "Uhrzeit", year: "6e", component: TimeView,
     sr: {
       items: () => Object.keys(TIME_CLASS_MIN).map((c) => "time:" + c),
       generateRound: (id) => timeRoundFor(id.slice("time:".length)),

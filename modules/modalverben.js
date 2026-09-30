@@ -235,7 +235,7 @@ function ModalverbenView() {
   }
 
   register({
-    id: "modalverben", icon: "\u{1F6A6}", label: "Modalverben", component: ModalverbenView,
+    id: "modalverben", icon: "\u{1F6A6}", label: "Modalverben", year: "6e", component: ModalverbenView,
     sr: {
       items: () => {
         const out = [];

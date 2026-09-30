@@ -205,7 +205,7 @@ function AkkusativView() {
   }
 
   register({
-    id: "akkusativ", icon: "\u{1F3AF}", label: "Akkusativ", component: AkkusativView,
+    id: "akkusativ", icon: "\u{1F3AF}", label: "Akkusativ", year: "6e", component: AkkusativView,
     sr: {
       items: () => ["m", "f", "n", "pl"].map((g) => "akk:" + g),
       generateRound: (id) => akkusativRoundForGender(id.split(":")[1]),

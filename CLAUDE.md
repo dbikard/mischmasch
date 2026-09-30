@@ -47,6 +47,8 @@ MischMasch is a German-French vocabulary flashcard PWA deployed on GitHub Pages.
 2. Add `<script type="text/babel" src="./modules/<id>.js">` after the core
    script in `index.html`.
 3. List the file in `service-worker.js` `ASSETS` and bump `CACHE_NAME`.
+4. Pass the school year to `register(...)` (`year: "5e"`); with a year
+   selected, Auto-Modus only schedules that year's modules.
 
 No core UI changes are needed — the Übungen hub card, nav highlighting, and
 routing all derive from the registry.

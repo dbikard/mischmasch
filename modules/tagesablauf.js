@@ -532,7 +532,7 @@ function TagesablaufView() {
   }
 
   register({
-    id: "tagesablauf", icon: "\u{1F305}", label: "Alltag", component: TagesablaufView,
+    id: "tagesablauf", icon: "\u{1F305}", label: "Alltag", year: "6e", component: TagesablaufView,
     sr: {
       items: () => window.TAGESABLAUF_DATA.map((v) => "tages:" + v.inf),
       generateRound: (id) => tagesablaufRoundFor(id.slice("tages:".length)),

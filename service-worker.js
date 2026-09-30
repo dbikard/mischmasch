@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mischmasch-v43';
+const CACHE_NAME = 'mischmasch-v44';
 const ASSETS = [
   './',
   './index.html',
@@ -31,6 +31,7 @@ const ASSETS = [
   './modules/tagesablauf.js',
   './modules/akkusativ.js',
   './modules/modalverben.js',
+  './modules/meinung.js',
 ];
 
 self.addEventListener('install', (event) => {
