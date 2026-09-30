@@ -25,6 +25,9 @@ MischMasch is a German-French vocabulary flashcard PWA deployed on GitHub Pages.
 - `modules/<id>.js` — one self-registering practice module each
   (copy `modules/time.js` as the template)
 - `words/*.tsv` + `words/index.json` — vocabulary categories.
+  Each `index.json` entry carries a school-year tag (`"year": "6e"`,
+  `"5e"`, …); the Vocabeln and Auto-Modus year tabs filter by it
+  (stored under `vocab-de-fr-year`). Tag every new category.
   Format per line: `German<TAB>French`. Symbol conventions:
   - `/` — interchangeable answers/synonyms, kept as **one** card that
     accepts either (`le collier / la chaîne`). Never means "two cards".

@@ -33,10 +33,44 @@ const STORAGE_KEY = "vocab-de-fr";
 const CATEGORIES_KEY = "vocab-de-fr-categories";
 const FILTER_KEY = "vocab-de-fr-filter";
 const DIRECTION_KEY = "vocab-de-fr-direction";
+const YEAR_KEY = "vocab-de-fr-year";
 const STREAK_KEY = "vocab-de-fr-streak";
 const MODULE_STATS_KEY = (id) => `vocab-de-fr-${id}-stats`;
 
 /* ── helpers ─────────────────────────────────────────────────── */
+// School-year tags ("6e", "5e", …) come from the optional `year` field in
+// words/index.json. The chosen year is shared by Vocabeln and Auto-Modus;
+// categories without a year (e.g. "My words") are always included.
+const yearLabel = (y) => y.replace(/e$/, "ème");
+function loadYear() {
+  try { return localStorage.getItem(YEAR_KEY) || null; } catch { return null; }
+}
+function saveYear(y) {
+  try { y ? localStorage.setItem(YEAR_KEY, y) : localStorage.removeItem(YEAR_KEY); } catch {}
+}
+function categoryYears(categories) {
+  return [...new Set((categories || []).map((c) => c.year).filter(Boolean))];
+}
+// Words belonging to the given year (null = all years).
+function wordsInYear(words, categories, year) {
+  if (!year) return words;
+  const yearOf = {};
+  (categories || []).forEach((c) => { yearOf[c.id] = c.year; });
+  return words.filter((w) => !yearOf[w.category] || yearOf[w.category] === year);
+}
+
+function YearTabs({ years, year, onChange }) {
+  if (years.length < 2) return null;
+  return (
+    <div className="mode-tabs" style={{ marginBottom: 8 }}>
+      <button className={`mode-tab ${!year ? "active" : ""}`} onClick={() => onChange(null)}>Alle Jahre</button>
+      {years.map((y) => (
+        <button key={y} className={`mode-tab ${year === y ? "active" : ""}`} onClick={() => onChange(y)}>{yearLabel(y)}</button>
+      ))}
+    </div>
+  );
+}
+
 function shuffle(a) {
   const b = [...a];
   for (let i = b.length - 1; i > 0; i--) {
@@ -1129,11 +1163,15 @@ function AutoModeView({ words, save, categories }) {
     const c = (categories || []).find((x) => x.id === id);
     return c ? c.name : null;
   }, [categories]);
+  const years = useMemo(() => categoryYears(categories), [categories]);
+  const [yearPick, setYearPick] = useState(loadYear);
+  const year = years.includes(yearPick) ? yearPick : null;
+  const changeYear = (y) => { setYearPick(y); saveYear(y); };
   const sources = useMemo(() => {
-    const list = [autoVocabSource(words, save, directionMode, catName)];
+    const list = [autoVocabSource(wordsInYear(words, categories, year), save, directionMode, catName)];
     MODULES.forEach((m) => { if (m.sr) list.push(autoModuleSource(m)); });
     return list;
-  }, [words, directionMode, catName]);
+  }, [words, categories, year, directionMode, catName]);
   const sourcesRef = useRef(sources);
   sourcesRef.current = sources;
 
@@ -1171,7 +1209,7 @@ function AutoModeView({ words, save, categories }) {
     setPick({ srcId: src.id, itemId: chosen.itemId, spec, srcLabel: src.label, srcIcon: src.icon });
   }, []);
 
-  useEffect(() => { pickNext(); }, [pickNext]);
+  useEffect(() => { pickNext(); }, [pickNext, year]);
 
   const onResult = (r) => {
     // r is a boolean (choice/tokens) or "correct"/"article"/"wrong" (typed).
@@ -1205,6 +1243,7 @@ function AutoModeView({ words, save, categories }) {
           {streak > 0 && <div className="streak-badge">{"\u{1F525}"} {streak}</div>}
         </div>
       </div>
+      <YearTabs years={years} year={year} onChange={changeYear} />
       <div style={{ marginBottom: 14 }}>
         <span className="streak-badge" aria-label={pick.srcLabel}>
           <span aria-hidden="true">{pick.srcIcon}</span> {pick.srcLabel}
@@ -1474,29 +1513,50 @@ function PracticeView({ words, categories, save }) {
     return stored ? new Set(stored) : null; // null = all
   });
 
-  const availableCategories = useMemo(() => {
-    const catIds = new Set(words.map((w) => w.category));
-    return categories.filter((c) => catIds.has(c.id));
-  }, [words, categories]);
+  // School-year filter — narrows the categories on offer
+  const years = useMemo(() => categoryYears(categories), [categories]);
+  const [yearPick, setYearPick] = useState(loadYear);
+  const year = years.includes(yearPick) ? yearPick : null;
+  const yearWords = useMemo(() => wordsInYear(words, categories, year), [words, categories, year]);
 
-  const allActive = activeCategories === null || activeCategories.size === availableCategories.length;
+  const availableCategories = useMemo(() => {
+    const catIds = new Set(yearWords.map((w) => w.category));
+    return categories.filter((c) => catIds.has(c.id));
+  }, [yearWords, categories]);
+
+  // A stored selection may name categories of another year; ignore those.
+  const activeInYear = useMemo(() => {
+    if (!activeCategories) return null;
+    const ids = new Set(availableCategories.map((c) => c.id));
+    const s = new Set([...activeCategories].filter((id) => ids.has(id)));
+    return s.size ? s : null;
+  }, [activeCategories, availableCategories]);
+
+  const allActive = activeInYear === null || activeInYear.size === availableCategories.length;
 
   const filteredWords = useMemo(() => {
-    if (allActive) return words;
-    return words.filter((w) => activeCategories.has(w.category));
-  }, [words, activeCategories, allActive]);
+    if (allActive) return yearWords;
+    return yearWords.filter((w) => activeInYear.has(w.category));
+  }, [yearWords, activeInYear, allActive]);
+
+  const changeYear = (y) => {
+    setYearPick(y);
+    saveYear(y);
+    setActiveCategories(null);
+    localStorage.setItem(FILTER_KEY, "null");
+  };
 
   const toggleCategory = (catId) => {
     let next;
     if (allActive) {
       // Switching from "all" to just this one
       next = new Set([catId]);
-    } else if (activeCategories.has(catId)) {
-      next = new Set(activeCategories);
+    } else if (activeInYear.has(catId)) {
+      next = new Set(activeInYear);
       next.delete(catId);
       if (next.size === 0) next = null; // back to all
     } else {
-      next = new Set(activeCategories);
+      next = new Set(activeInYear);
       next.add(catId);
       if (next.size === availableCategories.length) next = null; // all selected = all
     }
@@ -1546,7 +1606,7 @@ function PracticeView({ words, categories, save }) {
 
   useEffect(() => {
     if (hasEnough) nextCard();
-  }, [mode, activeCategories, directionMode]);
+  }, [mode, activeCategories, directionMode, year]);
 
   useEffect(() => {
     if (sessionCount === 1 && !streakUpdated.current) {
@@ -1762,7 +1822,7 @@ function PracticeView({ words, categories, save }) {
     );
   }
 
-  const activeCount = allActive ? availableCategories.length : activeCategories.size;
+  const activeCount = allActive ? availableCategories.length : activeInYear.size;
 
   return (
     <div className="fade-in" style={{ paddingTop: 8 }}>
@@ -1804,6 +1864,8 @@ function PracticeView({ words, categories, save }) {
         </div>
       )}
 
+      <YearTabs years={years} year={year} onChange={changeYear} />
+
       {availableCategories.length > 1 && (
         <div style={{ marginBottom: 20 }}>
           <button
@@ -1822,7 +1884,7 @@ function PracticeView({ words, categories, save }) {
               {availableCategories.map((c) => (
                 <button
                   key={c.id}
-                  className={`cat-chip ${!allActive && activeCategories.has(c.id) ? "active" : ""}`}
+                  className={`cat-chip ${!allActive && activeInYear.has(c.id) ? "active" : ""}`}
                   onClick={() => toggleCategory(c.id)}
                 >
                   {c.name}
