@@ -47,6 +47,16 @@ window.MEINUNG_DATA = {
     { fr: "la natation est bonne pour la santé",    subj: ["Schwimmen"],       verb: "ist",   mid: ["gesund"] },
     { fr: "le tennis, c'est amusant",               subj: ["Tennis"],          verb: "macht", mid: ["Spaß"] },
     { fr: "le football est dangereux",              subj: ["Fußball"],         verb: "ist",   mid: ["gefährlich"] },
+    // From the debate table "für oder gegen Sport"
+    { fr: "le sport est bon pour le cerveau",       subj: ["Sport"],           verb: "ist",   mid: ["gut", "für", "das", "Gehirn"] },
+    { fr: "le sport est bon pour le corps",         subj: ["Sport"],           verb: "ist",   mid: ["gut", "für", "den", "Körper"] },
+    { fr: "le sport est fatigant",                  subj: ["Sport"],           verb: "ist",   mid: ["ermüdend"] },
+    { fr: "le sport est cher",                      subj: ["Sport"],           verb: "ist",   mid: ["teuer"] },
+    { fr: "on peut se défouler",                    subj: ["man"],             verb: "kann",  mid: ["sich"], end: ["austoben"] },
+    { fr: "on peut voir des amis",                  subj: ["man"],             verb: "kann",  mid: ["Freunde"], end: ["treffen"] },
+    { fr: "on pense à autre chose",                 subj: ["man"],             verb: "denkt", mid: ["an", "etwas", "anderes"] },
+    { fr: "on est sous pression",                   subj: ["man"],             verb: "ist",   mid: ["unter", "Druck"] },
+    { fr: "il faut beaucoup d'énergie",             subj: ["man"],             verb: "braucht", mid: ["viel", "Energie"] },
   ],
 };
 

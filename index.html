@@ -106,8 +106,11 @@ function parseTable(text, category) {
       const fr = parts[1].trim();
       if (!de || !fr || /^[-=:]+$/.test(de) || /^[-=:]+$/.test(fr)) return null;
       let article = null;
+      // A leading der/die/das is an article only for a noun phrase — one
+      // ending on a capitalized word ("die kurze Hose"). Sentences such as
+      // "Das stimmt nicht" or "das Denken klappt besser" keep it as text.
       const m = de.match(/^(der|die|das)\s+/i);
-      if (m) {
+      if (m && /(^|\s)[A-ZÄÖÜ][^\s]*$/.test(de)) {
         article = m[1].toLowerCase();
         de = de.slice(m[0].length);
       }

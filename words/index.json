@@ -19,5 +19,7 @@
   { "id": "essen-trinken", "name": "Essen und Trinken", "file": "essen-trinken.tsv", "year": "6e" },
   { "id": "freizeit-pflichten", "name": "Freizeit & Pflichten", "file": "freizeit-pflichten.tsv", "year": "6e" },
   { "id": "gesundheit", "name": "Gesundheit & Sport", "file": "gesundheit.tsv", "year": "5e" },
-  { "id": "meine-meinung", "name": "Meine Meinung sagen", "file": "meine-meinung.tsv", "year": "5e" }
+  { "id": "meine-meinung", "name": "Meine Meinung sagen", "file": "meine-meinung.tsv", "year": "5e" },
+  { "id": "debatte-sport", "name": "Debatte: für oder gegen Sport", "file": "debatte-sport.tsv", "year": "5e" },
+  { "id": "widersprechen", "name": "Widersprechen", "file": "widersprechen.tsv", "year": "5e" }
 ]

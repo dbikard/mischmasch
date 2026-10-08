@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mischmasch-v44';
+const CACHE_NAME = 'mischmasch-v45';
 const ASSETS = [
   './',
   './index.html',
@@ -27,6 +27,8 @@ const ASSETS = [
   './words/freizeit-pflichten.tsv',
   './words/gesundheit.tsv',
   './words/meine-meinung.tsv',
+  './words/debatte-sport.tsv',
+  './words/widersprechen.tsv',
   './modules/time.js',
   './modules/tagesablauf.js',
   './modules/akkusativ.js',
