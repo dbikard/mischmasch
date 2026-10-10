@@ -308,9 +308,23 @@ function stripArticle(s) {
   return s.trim().toLowerCase().replace(LEADING_ARTICLE_RE, "");
 }
 
+// Sentence cards: a leading "Es" and "Das" are interchangeable ("Es ist
+// gut für die Muskeln" ⇄ "Das ist gut …"). Adds the swapped variant to a
+// "/"-separated expected string; used for checking only, never displayed.
+function withEsDas(expected) {
+  const extra = [];
+  expected.split("/").forEach((s) => {
+    const t = s.trim();
+    const m = t.match(/^(es|das)\s+(.+)$/i);
+    if (m && /\s/.test(m[2])) extra.push((m[1].toLowerCase() === "es" ? "Das " : "Es ") + m[2]);
+  });
+  return extra.length ? [expected, ...extra].join(" / ") : expected;
+}
+
 // True if `input` matches `expected` (which may hold "/"-separated
 // variants), tolerating a leading French/German article on either side.
 function vocabAnswerMatches(input, expected) {
+  expected = withEsDas(expected);
   const user = input.trim().toLowerCase();
   const userS = stripArticle(input);
   const alts = new Set();
@@ -334,6 +348,7 @@ function articleForms(article) {
 // missing / wrong / superfluous), or "wrong". `article` is the word's
 // gender article (der/die/das) or null for article-less lemmas.
 function checkVocab(input, expected, article) {
+  expected = withEsDas(expected);
   const user = input.trim().toLowerCase();
   const bare = expected.split("/").map((s) => s.trim().toLowerCase());
   const ok = new Set();
@@ -1630,10 +1645,11 @@ function PracticeView({ words, categories, save }) {
 
   const handleTypeSubmit = () => {
     if (!input.trim() || result) return;
-    const rawExpected = direction === "de>fr" ? current.fr : current.de;
+    const shownExpected = direction === "de>fr" ? current.fr : current.de;
     const displayExpected = direction === "fr>de" && current.article
       ? current.article + " " + current.de
-      : rawExpected;
+      : shownExpected;
+    const rawExpected = withEsDas(shownExpected);
     const alternatives = rawExpected.split("/").map((s) => s.trim().toLowerCase());
     // Also accept "article + word" when translating to German
     if (direction === "fr>de" && current.article) {
