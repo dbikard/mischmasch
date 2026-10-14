@@ -52,12 +52,23 @@ function saveYear(y) {
 function categoryYears(categories) {
   return [...new Set((categories || []).map((c) => c.year).filter(Boolean))];
 }
+// A word listed in several category files (e.g. "die Augen" in Frisur 6e
+// and Der Körper 5e) is one card with one score: `category` is the first
+// file, `alsoIn` the others.
+function wordCats(w) {
+  return w.alsoIn && w.alsoIn.length ? [w.category, ...w.alsoIn] : [w.category];
+}
+// Category ids that belong to the given year (null = all years).
+function categoryInYear(categories, year) {
+  const yearOf = {};
+  (categories || []).forEach((c) => { yearOf[c.id] = c.year; });
+  return (id) => !year || !yearOf[id] || yearOf[id] === year;
+}
 // Words belonging to the given year (null = all years).
 function wordsInYear(words, categories, year) {
   if (!year) return words;
-  const yearOf = {};
-  (categories || []).forEach((c) => { yearOf[c.id] = c.year; });
-  return words.filter((w) => !yearOf[w.category] || yearOf[w.category] === year);
+  const inYear = categoryInYear(categories, year);
+  return words.filter((w) => wordCats(w).some(inYear));
 }
 
 function YearTabs({ years, year, onChange }) {
@@ -794,16 +805,22 @@ function VocabTrainer() {
         // Merge: keep existing scores, add new words from files
         const merged = [];
         const seen = new Set();
-        // First, add all fetched words (with existing scores if available)
+        const byKey = {};
+        // First, add all fetched words (with existing scores if available).
+        // A word repeated in another file joins that category too (alsoIn).
         for (const w of fetched) {
           const k = wordKey(w);
-          if (seen.has(k)) continue;
-          seen.add(k);
-          if (existingMap[k]) {
-            merged.push({ ...existingMap[k], category: w.category });
-          } else {
-            merged.push(w);
+          if (seen.has(k)) {
+            const first = byKey[k];
+            if (first.category !== w.category && !first.alsoIn.includes(w.category)) first.alsoIn.push(w.category);
+            continue;
           }
+          seen.add(k);
+          const entry = existingMap[k]
+            ? { ...existingMap[k], category: w.category, alsoIn: [] }
+            : { ...w, alsoIn: [] };
+          byKey[k] = entry;
+          merged.push(entry);
         }
         // Then, add any user-added words from localStorage not in fetched
         // files. A leftover that claims a real category but matches no file
@@ -1145,7 +1162,7 @@ function autoVocabSource(words, save, directionMode, catName) {
     },
     generateRound: (id) => {
       const { word, kind } = byId[id];
-      const context = catName ? catName(word.category) : null;
+      const context = catName ? catName(word) : null;
       if (kind === "g") {
         return { kind: "choice", word: word.de, cue: "Welcher Artikel?", context, options: ["der", "die", "das"], correct: word.article };
       }
@@ -1178,14 +1195,17 @@ function AutoModeView({ words, save, categories }) {
     const s = localStorage.getItem(DIRECTION_KEY);
     return s === "de>fr" || s === "fr>de" || s === "both" ? s : "both";
   })();
-  const catName = useCallback((id) => {
-    const c = (categories || []).find((x) => x.id === id);
-    return c ? c.name : null;
-  }, [categories]);
   const years = useMemo(() => categoryYears(categories), [categories]);
   const [yearPick, setYearPick] = useState(loadYear);
   const year = years.includes(yearPick) ? yearPick : null;
   const changeYear = (y) => { setYearPick(y); saveYear(y); };
+  // Name of the word's category — the one in the selected year if it has several.
+  const catName = useCallback((word) => {
+    const inYear = categoryInYear(categories, year);
+    const id = wordCats(word).find(inYear) || word.category;
+    const c = (categories || []).find((x) => x.id === id);
+    return c ? c.name : null;
+  }, [categories, year]);
   const sources = useMemo(() => {
     const list = [autoVocabSource(wordsInYear(words, categories, year), save, directionMode, catName)];
     MODULES.forEach((m) => { if (m.sr && (!year || !m.year || m.year === year)) list.push(autoModuleSource(m)); });
@@ -1277,7 +1297,7 @@ function AutoModeView({ words, save, categories }) {
 function HomeView({ words, categories, setView }) {
   const withArticle = words.filter((w) => w.article);
   const catCounts = {};
-  words.forEach((w) => { catCounts[w.category] = (catCounts[w.category] || 0) + 1; });
+  words.forEach((w) => wordCats(w).forEach((c) => { catCounts[c] = (catCounts[c] || 0) + 1; }));
 
   const [shared, setShared] = useState(false);
   // Native share sheet (WhatsApp, Messages, …) where available; otherwise
@@ -1539,9 +1559,10 @@ function PracticeView({ words, categories, save }) {
   const yearWords = useMemo(() => wordsInYear(words, categories, year), [words, categories, year]);
 
   const availableCategories = useMemo(() => {
-    const catIds = new Set(yearWords.map((w) => w.category));
+    const inYear = categoryInYear(categories, year);
+    const catIds = new Set(yearWords.flatMap(wordCats).filter(inYear));
     return categories.filter((c) => catIds.has(c.id));
-  }, [yearWords, categories]);
+  }, [yearWords, categories, year]);
 
   // A stored selection may name categories of another year; ignore those.
   const activeInYear = useMemo(() => {
@@ -1555,7 +1576,7 @@ function PracticeView({ words, categories, save }) {
 
   const filteredWords = useMemo(() => {
     if (allActive) return yearWords;
-    return yearWords.filter((w) => activeInYear.has(w.category));
+    return yearWords.filter((w) => wordCats(w).some((c) => activeInYear.has(c)));
   }, [yearWords, activeInYear, allActive]);
 
   const changeYear = (y) => {
@@ -1944,7 +1965,8 @@ function PracticeView({ words, categories, save }) {
                   : current.fr}
             </div>
             {(() => {
-              const cn = (categories.find((c) => c.id === current.category) || {}).name;
+              const cid = wordCats(current).find((c) => availableCategories.some((a) => a.id === c)) || current.category;
+              const cn = (categories.find((c) => c.id === cid) || {}).name;
               return cn ? <div style={{ fontSize: 11, color: "var(--ink2)", marginTop: 8, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600, opacity: 0.7, position: "relative" }}>{cn}</div> : null;
             })()}
             {(() => {
