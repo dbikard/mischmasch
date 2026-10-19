@@ -34,6 +34,9 @@ const ANCHORS = [
   ...DECOYS.flatMap((d) => d.at.map(([x, y]) => ({ x, y, decoy: d }))),
 ];
 const TAP_RADIUS = 30;
+// Where to show a part (glow / answer rings): a singular word marks ONE
+// spot (das Knie → one knee, not "die Knie"); plurals mark all of them.
+const showAt = (p) => (p.plural ? p.at : [p.at[0]]);
 
 // "Zeig mir den Kopf!" — accusative article; "das ist mein/meine …".
 const acc = (p) => (p.art === "der" ? "den" : p.art);
@@ -130,7 +133,7 @@ function BodyFigure({ mood = "idle", glow = [], marks = [], onTap, width = 240 }
         <line key={a} x1={100 + 12 * Math.cos(a * Math.PI / 180)} y1={168 + 12 * Math.sin(a * Math.PI / 180)} x2={100 + 16 * Math.cos(a * Math.PI / 180)} y2={168 + 16 * Math.sin(a * Math.PI / 180)} stroke="#f2c94c" strokeWidth="2.5" strokeLinecap="round" />
       ))}
       {/* highlights */}
-      {glowParts.flatMap((p) => p.at.slice(0, p.id === "bein" ? 2 : p.at.length).map(([x, y], i) => (
+      {glowParts.flatMap((p) => showAt(p).map(([x, y], i) => (
         <circle key={p.id + i} cx={x} cy={y} r="13" className="kb-glow" />
       )))}
       {marks.map((m, i) => (
@@ -255,7 +258,7 @@ function KoerperView() {
       if (t >= round.start + round.duration) {
         clearInterval(id);
         if (round.kind === "trick") resolve(true, { msg: "Gut aufgepasst! Simon hat nichts gesagt 😎", vocab: false });
-        else resolve(false, { msg: "Zu langsam! ⏰", marks: round.part.at.slice(0, 2).map(([x, y]) => ({ x, y, ok: true })) });
+        else resolve(false, { msg: "Zu langsam! ⏰", marks: showAt(round.part).map(([x, y]) => ({ x, y, ok: true })) });
       }
     }, 80);
     return () => clearInterval(id);
@@ -276,7 +279,7 @@ function KoerperView() {
       const what = bestA.part ? thatIs(bestA.part) : `das ist ${bestA.decoy.label}`;
       resolve(false, {
         msg: `Nein, ${what}!`,
-        marks: [{ ...tapped, ok: false }, ...target.at.slice(0, 2).map(([px, py]) => ({ x: px, y: py, ok: true }))],
+        marks: [{ ...tapped, ok: false }, ...showAt(target).map(([px, py]) => ({ x: px, y: py, ok: true }))],
       });
     }
   };
